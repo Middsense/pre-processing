@@ -1,0 +1,36 @@
+Myles Stokowski
+06.17.2020
+GDAL commands for working with the VA landcover layer
+download data: https://ftp.vgingis.com/download_2/land_cover/
+metadata: https://vgin.maps.arcgis.com/home/item.html?id=d3d51bb5431a4d26a313f586c7c2c848
+
+# tiles in AOI are 'N16_26', 'N16_27', 'N16_36', 'N16_37', 'S13_28', 'S13_29', 'S13_38'
+# from Bay_Area_2, and 'S13_38' from Bay_Area_3
+
+# also need RITA2_Site1_Staunton_Amplitude_Image_Footprint.shp, a shapefile with the
+# extent of the SAR data. We use it to clip the rasters to the SAR data extent
+ 
+# 01 reproject, merge, clip and compress the 1m landcover raster tiles
+gdalwarp -t_srs EPSG:4326 -r near -ot Byte -co COMPRESS=LZW --config GDAL_CACHEMAX 8192 -wm 8192 -cutline RITA2_Site1_Staunton_Amplitude_Image_Footprint.shp *.tif landcover_merged_reprojected_clipped_compressed.tif
+
+# 02 compute a road mask using the aggregated raster (previous output)
+gdal_calc.py -A landcover_merged_reprojected_clipped_compressed.tif --outfile=landcover_road_mask.tif --calc="logical_or(A==21, A==22)" --NoDataValue=0 --co "COMPRESS=LZW" --debug --type=Byte --co NBITS=1 --format Gtiff
+
+# 03 create versions of the previous 2 outputs with 3m resolution, rather than 1m, in
+# order to match with the resolution of the SAR data
+
+pixel size to create output file resolution same as default (1m pixels) is
+-tr 0.000010269004280,-0.000010269004280
+which I got from
+gdalinfo ./outputs/landcover_merged_reprojected_clipped_compressed.tif | grep Pixel*
+which ouputs
+Pixel Size = (0.000010269004280,-0.000010269004280)
+
+to create output file with 3m pixels, use
+-tr 0.000034199059494 0.000027035128767
+which comes from the Pixel Size of the SAR images
+
+# TODO this command successfully creates a 3m raster, but it is offset from the SAR
+# imagery by a fraction of a pixel.  
+gdalwarp -t_srs EPSG:4326 -r near -ot Byte -co COMPRESS=LZW --config GDAL_CACHEMAX 8192 -wm 8192 -cutline ../SAR_Footprint/RITA2_Site1_Staunton_Amplitude_Image_Footprint.shp -tr 0.000034199059494 0.000027035128767 *.tif landcover_merged_reprojected_clipped_compressed_3m.tif
+
