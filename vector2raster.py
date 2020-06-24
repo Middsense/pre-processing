@@ -33,7 +33,7 @@ def vector2raster(inputshp, outtif, reftif, ops):
 
     # Rasterize!
     band = out.GetRasterBand(1)
-    band.SetNoDataValue(1)
+    band.SetNoDataValue(-9999)
     gdal.RasterizeLayer(out, [1], shp_layer, burn_values=[burnVal], options=ops)
 
     # close datasets
