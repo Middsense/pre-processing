@@ -96,12 +96,18 @@ if __name__ == "__main__":
                         help = "path to output csv (required)")
     parser.add_argument('-s', '--summarize',
                         help = "summarize method: from {'mean', 'median', 'count', 'none'}")
+    parser.add_argument('-i', '--interactive', action = 'store_true',
+                        help = "flag to pause to confirm calculation")
     args = parser.parse_args()
 
     n = len(args.mask_tifs) * len(args.data_tifs)
-    proceed = input("run on all " + str(n) + " (data, mask) pairs? (y/n): ")
 
-    if proceed == 'y':
+    if args.interactive:
+        proceed = input("run on all " + str(n) + " (data, mask) pairs? (y/n): ")
+    else:
+        print("calculating summaries on all " + str(n) + " (data, mask) pairs")
+
+    if (not args.interactive) or proceed == 'y':
         temp0 = []
         progress = 0
         for data in args.data_tifs:
