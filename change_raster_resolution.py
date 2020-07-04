@@ -32,7 +32,7 @@ def convert_resolution(srctif, dsttif, reftif):
 
     # fill with data from source
     band = dst.GetRasterBand(1)
-    band.SetNoDataValue(0)
+    band.SetNoDataValue(-9999)
     gdal.ReprojectImage(src, dst, src_proj, ref_proj, gdal.GRA_NearestNeighbour)
 
     # close datasets
