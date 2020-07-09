@@ -9,6 +9,7 @@ calculates the number of zeros within each unqiue OID, as well as the percentage
 Next, summarizes the sum, mean and standard deviation for each OID before and after cleaning
 the data so that all zero amplitude values are removed.
 
+NOTE: you can use a test csv file called amp_test.csv which is uploaded
 
 """
 
