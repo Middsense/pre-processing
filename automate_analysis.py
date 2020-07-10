@@ -72,7 +72,6 @@ else:
     GDB2SHP_COMMAND = 'ogr2ogr -f "ESRI Shapefile" ' + ROAD_SHP_DIR + ' ' + ROAD_GDB
     os.system(GDB2SHP_COMMAND)
 
-
 # 01 rasterize .shp files, burn in OID value
 if os.path.exists(ROAD_RASTER_DIR):
     print('skipping .shp to .tif conversion, {} directory already exists'.format(\
@@ -105,6 +104,12 @@ else:
         + 'GDAL_CACHEMAX 5000 -wm 5000 -cutline ' + CUTLINE + ' ' \
         + ' '.join(merge_tiles) + ' ' + LANDCOVER_MERGED
     os.system(WARP_COMMAND)
+
+# test of gdalwarp as a Python library function (rather than calling from cli with os)
+# unfortunately, runs slower (at least as configured) than os.system implementation
+# options = gdal.WarpOptions(cutlineDSName=CUTLINE, resampleAlg="near",\
+#     creationOptions=["COMPRESS=DEFLATE"])
+# gdal.Warp(LANDCOVER_RASTER_DIR + 'landcover-merged.tif', merge_tiles, options=options)
 
 # 12 reproject and change resolution
 if os.path.exists(LANDCOVER_REPROJECTED):
