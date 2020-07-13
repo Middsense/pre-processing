@@ -20,11 +20,14 @@ usage:
 import os
 import time
 import glob
+import geopandas as gpd
+import pandas as pd
+
 import vector2raster as v2r
 import change_raster_resolution as crr
 import raster2table as r2t
-import dbf2csv as d2c
 import mask
+
 
 start = time.time()
 
@@ -44,12 +47,18 @@ REFTIF = os.listdir(RAW_SAR_DIR)[0] # an arbitrary SAR image used only for align
 # define output paths
 ROAD_SHP_DIR = './road-shapefiles/'
 ROAD_RASTER_DIR = './road-rasters/'
+CSV_DIR = './csv/'
 LANDCOVER_RASTER_DIR = './landcover-rasters/'
 LANDCOVER_MERGED = LANDCOVER_RASTER_DIR + 'landcover-merged.tif'
 LANDCOVER_REPROJECTED = LANDCOVER_RASTER_DIR + 'landcover-merged-reprojected.tif'
 LANDCOVER_MASKED = LANDCOVER_RASTER_DIR + 'landcover-merged-reprojected-masked.tif'
 ROAD_DBF = ROAD_SHP_DIR + 'Staunton_Maint_All_Buf12_10_10.dbf'
-ROAD_CSV = 'all_road_features.csv'
+ROAD_CSV = CSV_DIR + 'all_road_features_within.csv'
+
+# define road layers from gdb
+ROAD_LAYERS = [ 'Staunton_Maint_2011_All_Buf12_10_10', 'Staunton_Maint_2012_All_Buf12_10_10',
+                'Staunton_Maint_2013_All_Buf12_10_10', 'Staunton_Maint_2014_All_Buf12_10_10',
+                'Staunton_Maint_2015_All_Buf12_10_10']
 
 # check that inputs are all in right places
 missing_inputs = []
@@ -62,15 +71,34 @@ if len(missing_inputs) > 0:
 else:
     print('all inputs in place')
 
-# 00 convert road maintenance .gdb to multiple shapefiles
+# 00
+# read in road maintenance .gdb
+# add within_footprint column indicating which features are completely within the SAR footprint
+# write .shp files for each year
+# write a single .csv with all the road features
 if os.path.exists(ROAD_SHP_DIR):
-    print('skipping .gdb to .shp conversion, {} directory already exists'.format(\
-        ROAD_SHP_DIR))
+    print('skipping .gdb to .shp conversion, {} directory already exists'.format(ROAD_SHP_DIR))
 else:
-    print('converting ' + ROAD_GDB + ' to shapefiles in ' + ROAD_SHP_DIR)
+    print('converting ' + ROAD_GDB + ' to shapefiles and csv')
     os.mkdir(ROAD_SHP_DIR)
-    GDB2SHP_COMMAND = 'ogr2ogr -f "ESRI Shapefile" ' + ROAD_SHP_DIR + ' ' + ROAD_GDB
-    os.system(GDB2SHP_COMMAND)
+    footprint = gpd.read_file(filename=CUTLINE)
+
+    out_gdfs = []
+    for layer in ROAD_LAYERS:
+
+        in_layer = gpd.read_file(filename=ROAD_GDB, layer=layer)
+
+        join = gpd.sjoin(in_layer, footprint, how='left', op='within')
+        join['within_footprint'] = join['index_right'] == 0
+        join.drop(columns=['Shape_Leng_right', 'Shape_Area_right','Shape_Leng_left', 'Shape_Area_left',
+                        'DN', 'index_right',], inplace=True)
+
+        outshp = layer + '_within_footprint.shp'
+        join.to_file(ROAD_SHP_DIR + outshp)
+        out_gdfs.append(join)
+
+    all_road_features = pd.concat(out_gdfs) #.drop(columns='geometry')
+    all_road_features.to_csv(ROAD_CSV)
 
 # 01 rasterize .shp files, burn in OID value
 if os.path.exists(ROAD_RASTER_DIR):
@@ -79,16 +107,9 @@ if os.path.exists(ROAD_RASTER_DIR):
 else:
     print('rasterizing .shp road layers')
     os.mkdir(ROAD_RASTER_DIR)
-    for shp in glob.glob(ROAD_SHP_DIR + '*[0-9]_All_Buf12_10_10.shp'):
+    for shp in glob.glob(ROAD_SHP_DIR + '*[0-9]_All_Buf12_10_10_within_footprint.shp'):
         OUTTIF = ROAD_RASTER_DIR + 'road-oid-' + str(shp[-24:-20]) + '.tif'
         v2r.vector2raster(shp, OUTTIF, REFTIF, ['ATTRIBUTE=OBJECTID'])
-
-# 02 convert the .dbf with all (buffered) features to csv
-if os.path.exists(ROAD_CSV):
-    print('skipping .dbf to .csv conversion, {} already exists'.format(ROAD_CSV))
-else:
-    print('converting {} to {}'.format(ROAD_DBF, ROAD_CSV))
-    d2c.dbf2csv(ROAD_DBF, ROAD_CSV)
 
 # 10 setup a landcover raster output folder
 if not os.path.exists(LANDCOVER_RASTER_DIR):
@@ -160,7 +181,7 @@ def generate_csv(masked_by_landcover, despeckled, method):
         despeck_tag = 'raw'
 
     out_path = str('{}{}_{}_{}_sar_amplitude_all_images_all_roads.csv'.format(\
-        DATA_DIR, method, despeck_tag, mask_tag))
+        CSV_DIR, method, despeck_tag, mask_tag))
     print('starting to create ' + out_path)
 
     r2t.merge(mask_tifs, data_tifs, out_path, method)
