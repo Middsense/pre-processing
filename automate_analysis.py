@@ -207,15 +207,36 @@ for road_raster in glob(ROAD_RASTER_DIR + '*.tif'):
 
 # 30 load the SAR images and road rasters into memory as sparse matrices
 
-# generate all_roads_dense
-# we'll use this to mask each SAR image before converting to sparse matrix
-all_roads_dense = gen_sparse.gen_all_roads_array(ROAD_RASTER_DIR+'all_roads_bool.tif')
-    #out: all road mask thing! (as numpy array) not a sparse array!!!!!
+def save_sparse(dict, path):
+    """
+    helper function to save each element in dict as .npz files
+    """
+    for key in dict:
+        sparse.save_npz(path+key, dict[key])
 
-# iterate through the SAR images and generate equivalent sparse matrices
-sar_image_list = glob(RAW_SAR_DIR+'*.tif') + glob(DESPECK_SAR_DIR+'*.tif')
-sparse_sar = gen_sparse.gen_all_sparse_images(sar_image_list, all_roads_dense)
-    # out: list of 134 sparse matrices (despeck & raw) (dictionary??)
+
+def gen_all_sparse():
+    """
+    Generate all sparse images as a dictionary of sparse matrices and save as .npz
+    """
+    # dense roads to mask each SAR image during conversion to sparse matrix (output is numpy array)
+    all_roads_dense = gen_sparse.gen_all_roads_array(ROAD_RASTER_DIR+'all_roads_bool.tif')
+
+    # Raw images
+    raw_imgs = glob(RAW_SAR_DIR+'*.tif')
+    sparse_raw = gen_sparse.gen_all_sparse_images(raw_imgs, all_roads_dense) # dict of 67 sparse matrices
+    # TODO: SAVE AS .npz
+    # save_sparse(sparse_raw)
+
+    # Despeckled images
+    despeck_imgs = glob(DESPECK_SAR_DIR+'*.tif')
+    sparse_raw = gen_sparse.gen_all_sparse_images(despeck_imgs, all_roads_dense) #dict of 67 sparse matrices
+    # TODO: SAVE AS .npz
+
+    # sparse matrices for single year road rasters
+    sparse_roads = gen_sparse.gen_all_sparse_roads() #out: list??
+
+
 
 # iterate through the single year road rasters and generate equivalent sparse matrices
 sparse_roads = gen_sparse.gen_all_sparse_roads()
