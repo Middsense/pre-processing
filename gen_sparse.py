@@ -57,19 +57,19 @@ def gen_all_sparse_images(sar_image_list, all_roads_dense):
     image_dict = dict(zip(image_labels, sparse_images))
     return image_dict
 
-def gen_sparse_roads(road_raster, all_roads_dense):
+def gen_sparse_roads(road_raster):
     roads = gdal.Open(road_raster, gdal.GA_ReadOnly)
     roads_dense = BandReadAsArray(roads.GetRasterBand(1))
     roads_dense[roads_dense == -9999] = 0
     roads_sparse = sparse.coo_matrix(roads_dense)
     return roads_sparse
 
-def gen_all_sparse_roads(road_raster_list, all_roads_dense):
+def gen_all_sparse_roads(road_raster_list):
     sparse_roads = []
     road_labels = []
     for road_raster in road_raster_list:
         road_labels.append(road_raster.split('/')[-1][9:13]) # TODO different slicing for masked roads
-        sparse_roads.append(gen_sparse_roads(road_raster, all_roads_dense))
+        sparse_roads.append(gen_sparse_roads(road_raster))
     road_dict = dict(zip(sparse_roads, road_labels))
     return road_dict
 
