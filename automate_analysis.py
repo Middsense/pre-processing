@@ -21,10 +21,11 @@ import os
 import time
 from glob import glob
 import pandas as pd
+from scipy import sparse
 
 import vector2raster as v2r
 import change_raster_resolution as crr
-import raster2table as r2t
+#import raster2table as r2t
 import gen_sparse
 import mask
 
@@ -44,7 +45,7 @@ start = time.time()
 
 # define data directory and set as working directory
 # (all subsequent paths are relative paths to DATA_DIR)
-DATA_DIR = '../data/'
+DATA_DIR = '../data2/'
 os.chdir(DATA_DIR)
 
 # define input paths
@@ -108,6 +109,7 @@ if os.path.exists(ROAD_SHP_DIR):
 else:
     print('converting ' + ROAD_GDB + ' to shapefiles and csv')
     os.mkdir(ROAD_SHP_DIR)
+    os.mkdir(CSV_DIR)
     footprint = gpd.read_file(filename=FOOTPRINT)
 
     out_gdfs = []
@@ -145,14 +147,15 @@ else:
         v2r.vector2raster(shp, OUTTIF, RAW_SAR_DIR + REFTIF, ['ATTRIBUTE=OBJECTID'])
 
 # TODO: reclass, any_rd should be   boolean mask
-# all_roads_mask = gdal.Open(ROAD_RASTER_DIR+'all_roads_within_footprint.tif', gdal.GA_ReadOnly)
-# all_roads_band = BandReadAsArray(all_roads_mask.GetRasterBand(1))
-all_roads_file = ROAD_SHP_DIR+'all_roads_within_footprint.shp'
-out_mask = ROAD_RASTER_DIR+'all_roads_bool.tif'
-MASK_COMMAND = 'gdal_calc -A {} --calc="A != -9999" --outfile {}' + \
-    ' --co "COMPRESS=DEFLATE" --type=Byte --co NBITS=1 --format Gtiff '.format(all_roads_file, out_mask)
-os.system(MASK_COMMAND)
-
+if os.path.exists(ROAD_RASTER_DIR + 'all_roads_bool.tif'):
+    print('skipping creating road mask "all_roads_bool.tif"')
+else:
+    print('creating road mask "all_roads_bool.tif"')
+    all_roads_raster = ROAD_RASTER_DIR+'all_roads_within_footprint.tif'
+    out_mask = ROAD_RASTER_DIR+'all_roads_bool.tif'
+    MASK_COMMAND = 'gdal_calc.py -A {} --calc="1 * (A != -9999)" --outfile {}'.format(all_roads_raster, out_mask) +\
+    ' --co "COMPRESS=DEFLATE" --type=Byte --co NBITS=1 --format Gtiff'
+    os.system(MASK_COMMAND)
 # 10 setup a landcover raster output folder
 if not os.path.exists(LANDCOVER_RASTER_DIR):
     os.mkdir(LANDCOVER_RASTER_DIR)
@@ -207,12 +210,12 @@ for road_raster in glob(ROAD_RASTER_DIR + '*.tif'):
 
 # 30 load the SAR images and road rasters into memory as sparse matrices
 
-def save_sparse(dict, path):
+def save_sparse(sparse_dict, path):
     """
     helper function to save each element in dict as .npz files
     """
-    for key in dict:
-        sparse.save_npz(path+key, dict[key])
+    for key in sparse_dict:
+        sparse.save_npz(path+key, sparse_dict[key])
 
 
 def gen_all_sparse():
@@ -234,13 +237,9 @@ def gen_all_sparse():
     # TODO: SAVE AS .npz
 
     # sparse matrices for single year road rasters
-    sparse_roads = gen_sparse.gen_all_sparse_roads() #out: list??
-
-
-
-# iterate through the single year road rasters and generate equivalent sparse matrices
-sparse_roads = gen_sparse.gen_all_sparse_roads()
-    # out: list of 5 years buffered/centerline and landcover/unmasked
+    road_rasters = glob(ROAD_RASTER_DIR+'*.tif')
+    sparse_roads = gen_sparse.gen_all_sparse_roads(road_rasters) #out: list??
+    # TODO save as .npz
 
 # now that we have all the data loaded into memory, we'll do summarization calculations
 # for each (road, SAR image) pair
@@ -283,7 +282,8 @@ def generate_csv(masked_by_landcover, despeckled):
         CSV_DIR, despeck_tag, mask_tag))
     print('starting to create ' + out_path)
 
-    r2t.merge(mask_tifs, data_tifs, out_path)
+    # TODO no longer using merge....
+    #r2t.merge(mask_tifs, data_tifs, out_path)
 
 # def generate_all_csvs():
 #     '''
