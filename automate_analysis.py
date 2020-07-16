@@ -19,12 +19,13 @@ usage:
 
 import os
 import time
-import glob
+from glob import glob
 import pandas as pd
 
 import vector2raster as v2r
 import change_raster_resolution as crr
 import raster2table as r2t
+import gen_sparse
 import mask
 
 # TODO using these libraries should probably happen just in other files
@@ -96,9 +97,9 @@ check_inputs()
 
 # 00
 # TODO this should probably get its own file or at least method
-# TODO need to handle creating an any_road.shp (and raster also)
+# TODO need to handle creating an all_roads.shp (and raster also)
 # read in road maintenance .gdb
-# add within_footprint column indicating which features are completely within the SAR footprint
+# select only features completely within footprint
 # write a .shp file for each year (2011-2015)
 # write a single .shp with all the road features (all years)
 # write a single .csv with all the road features (all years)
@@ -110,23 +111,25 @@ else:
     footprint = gpd.read_file(filename=FOOTPRINT)
 
     out_gdfs = []
+
     for layer in SINGLE_YEAR_ROAD_LAYERS:
 
+        # read directly from .gdb with geopandas
         in_layer = gpd.read_file(filename=ROAD_GDB, layer=layer)
 
+        # keep only road segments completely within border
         join = gpd.sjoin(in_layer, footprint, how='left', op='within')
-        join['within_footprint'] = join['index_right'] == 0
-        join.drop(columns=['Shape_Leng_right', 'Shape_Area_right','Shape_Leng_left', 'Shape_Area_left',
-                        'DN', 'index_right',], inplace=True)
+        join = join.loc[join['index_right'] == 0]
+
 
         outshp = layer + '_within_footprint.shp'
         join.to_file(ROAD_SHP_DIR + outshp)
         out_gdfs.append(join)
 
-    all_road_features = pd.concat(out_gdfs) #.drop(columns='geometry')
+    # merge all features from all years
+    all_road_features = pd.concat(out_gdfs)
     all_road_features.to_file(ROAD_SHP_DIR + 'all_roads_within_footprint.shp')
-    all_road_features.to_csv(ROAD_CSV)
-
+    all_road_features.drop(columns='geometry').to_csv(ROAD_CSV) # IRI .csv
 
 
 # 01 rasterize .shp files, burn in OID value
@@ -136,11 +139,19 @@ if os.path.exists(ROAD_RASTER_DIR):
 else:
     print('rasterizing .shp road layers')
     os.mkdir(ROAD_RASTER_DIR)
-    # TODO better handle any_rd raster vs year specific rasters
-    # any_rd raster can just be a boolean mask, rather than OID
-    for shp in glob.glob(ROAD_SHP_DIR + '*_All_Buf12_10_10_within_footprint.shp'):
-        OUTTIF = ROAD_RASTER_DIR + 'road-oid-' + str(shp[-24:-20]) + '.tif'
+
+    for shp in glob(ROAD_SHP_DIR + '*.shp'):
+        OUTTIF = shp.replace(ROAD_SHP_DIR, ROAD_RASTER_DIR).replace('.shp', '.tif')
         v2r.vector2raster(shp, OUTTIF, RAW_SAR_DIR + REFTIF, ['ATTRIBUTE=OBJECTID'])
+
+# TODO: reclass, any_rd should be   boolean mask
+# all_roads_mask = gdal.Open(ROAD_RASTER_DIR+'all_roads_within_footprint.tif', gdal.GA_ReadOnly)
+# all_roads_band = BandReadAsArray(all_roads_mask.GetRasterBand(1))
+all_roads_file = ROAD_SHP_DIR+'all_roads_within_footprint.shp'
+out_mask = ROAD_RASTER_DIR+'all_roads_bool.tif'
+MASK_COMMAND = 'gdal_calc -A {} --calc="A != -9999" --outfile {}' + \
+    ' --co "COMPRESS=DEFLATE" --type=Byte --co NBITS=1 --format Gtiff '.format(all_roads_file, out_mask)
+os.system(MASK_COMMAND)
 
 # 10 setup a landcover raster output folder
 if not os.path.exists(LANDCOVER_RASTER_DIR):
@@ -151,7 +162,7 @@ if os.path.exists(LANDCOVER_MERGED):
     print('skipping raster merge, {} already exists'.format(LANDCOVER_MERGED))
 else:
     print('merging landcover raster tiles')
-    merge_tiles = glob.glob(LANDCOVER_TILE_DIR + '*.tif')
+    merge_tiles = glob(LANDCOVER_TILE_DIR + '*.tif')
     WARP_COMMAND = 'gdalwarp -r near -co COMPRESS=DEFLATE --config '\
         + 'GDAL_CACHEMAX 5000 -wm 5000 -cutline ' + FOOTPRINT + ' ' \
         + ' '.join(merge_tiles) + ' ' + LANDCOVER_MERGED
@@ -181,8 +192,7 @@ else:
     os.system(reclass_command)
 
 # 20 mask OBJECT_ID (OID) rasters with landcover raster
-
-for road_raster in glob.glob(ROAD_RASTER_DIR + '*[0-9].tif'):
+for road_raster in glob(ROAD_RASTER_DIR + '*.tif'):
     out = road_raster[:-4] + '-masked.tif'
     if os.path.exists(out):
         print('skipping mask, {} already exists'.format(out))
@@ -199,13 +209,17 @@ for road_raster in glob.glob(ROAD_RASTER_DIR + '*[0-9].tif'):
 
 # generate all_roads_dense
 # we'll use this to mask each SAR image before converting to sparse matrix
-all_roads_dense = rt2.gen_all_roads_array()
+all_roads_dense = gen_sparse.gen_all_roads_array(ROAD_RASTER_DIR+'all_roads_bool.tif')
+    #out: all road mask thing! (as numpy array) not a sparse array!!!!!
 
 # iterate through the SAR images and generate equivalent sparse matrices
-sparse_sar = r2t.gen_all_sparse_images()
+sar_image_list = glob(RAW_SAR_DIR+'*.tif') + glob(DESPECK_SAR_DIR+'*.tif')
+sparse_sar = gen_sparse.gen_all_sparse_images(sar_image_list, all_roads_dense)
+    # out: list of 134 sparse matrices (despeck & raw) (dictionary??)
 
 # iterate through the single year road rasters and generate equivalent sparse matrices
-sparse_roads = r2t.gen_all_sparse_roads()
+sparse_roads = gen_sparse.gen_all_sparse_roads()
+    # out: list of 5 years buffered/centerline and landcover/unmasked
 
 # now that we have all the data loaded into memory, we'll do summarization calculations
 # for each (road, SAR image) pair
@@ -225,41 +239,40 @@ sparse_roads = r2t.gen_all_sparse_roads()
 # filenames: stats_raw/despeck_landcover/nomask_centerline/buffered.csv
 
 # 30 summarize into .csv
-def generate_csv(masked_by_landcover, despeckled, method):
+def generate_csv(masked_by_landcover, despeckled):
     '''
     masked_by_landcover: {True, False}
     despeckled: {True, False}
-    method: {'mean', 'median', 'count'}
     '''
     if masked_by_landcover:
-        mask_tifs = glob.glob(ROAD_RASTER_DIR + '*masked.tif')
+        mask_tifs = glob(ROAD_RASTER_DIR + '*masked.tif')
         mask_tag = 'landcover_mask'
     else:
-        mask_tifs = glob.glob(ROAD_RASTER_DIR + '*[0-9].tif')
+        mask_tifs = glob(ROAD_RASTER_DIR + '*[0-9].tif')
         mask_tag = 'no_mask'
 
     if despeckled:
-        data_tifs = glob.glob(DESPECK_SAR_DIR + '*.tif')
+        data_tifs = glob(DESPECK_SAR_DIR + '*.tif')
         despeck_tag = 'despeck'
     else:
-        data_tifs = glob.glob(RAW_SAR_DIR + '*.tif')
+        data_tifs = glob(RAW_SAR_DIR + '*.tif')
         despeck_tag = 'raw'
 
-    out_path = str('{}{}_{}_{}_sar_amplitude_all_images_all_roads.csv'.format(\
-        CSV_DIR, method, despeck_tag, mask_tag))
+    out_path = str('{}_{}_{}_sar_amplitude_all_images_all_roads.csv'.format(\
+        CSV_DIR, despeck_tag, mask_tag))
     print('starting to create ' + out_path)
 
-    r2t.merge(mask_tifs, data_tifs, out_path, method)
+    r2t.merge(mask_tifs, data_tifs, out_path)
 
-def generate_all_csvs():
-    '''
-    generate output csvs for all combinations of options
-    '''
-    for i in [False]: #[True, False]:
-        for j in [True, False]:
-            for method in ['mean', 'median', 'count']:
-                generate_csv(i, j, method)
-
-generate_all_csvs()
+# def generate_all_csvs():
+#     '''
+#     generate output csvs for all combinations of options
+#     '''
+#     for i in [False]: #[True, False]:
+#         for j in [True, False]:
+#             for method in ['mean', 'median', 'count']:
+#                 generate_csv(i, j, method)
+#
+# generate_all_csvs()
 
 print('total runtime (s): ' + str(time.time() - start))

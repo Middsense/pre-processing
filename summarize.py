@@ -2,18 +2,17 @@
 7/16/2020
 summarize.py
 
-functions to compute summary statistics on amplitude data 
+functions to compute summary statistics on amplitude data
 """
 import numpy as np
 import pandas as pd
-import scipy.sparse as sp
 
 from osgeo import ogr, osr, gdal
-from osgeo.gdalnumeric import *
-from osgeo.gdalconst import *
 
 from glob import glob
 import argparse
+
+import raster2table as r2t
 
 """
 Summary Functions
@@ -71,6 +70,40 @@ def all_metrics(df):
   merge = pd.concat([mean, median, count, zero, quant], axis=1, join='outer')
 
   return merge
+
+
+
+ if __name__ == "__main__":
+
+
+     all_roads_dense = r2t.gen_all_roads_array()
+
+     # iterate through the SAR images and generate equivalent sparse matrices
+     sparse_sar = r2t.gen_all_sparse_images()
+
+     # iterate through the single year road rasters and generate equivalent sparse matrices
+     sparse_roads = r2t.gen_all_sparse_roads()
+
+
+     #output list of sparse matrices
+
+     # now that we have all the data loaded into memory, we'll do summarization calculations
+     # for each (road, SAR image) pair
+     # TODO logic to loop through the pairs/combinations
+
+     # for each of sparse matrices (img, rd):
+         # img_masked = img.multiply(rd > 0).tocoo()
+         # pixels = pd.DataFrame({
+         #     'oid': rd.data,
+         #     'amp': img_masked.data
+         # })
+         # summarize(pixels)
+
+     # TODO logic to get all these summary stats into a nice DataFrame with
+     # columns labels in format "SARdate_statistic" --> "20110829_mean"
+     # rows labels OID
+     # filenames: stats_raw/despeck_landcover/nomask_centerline/buffered.csv
+
 
 """
 nothing to see here :)

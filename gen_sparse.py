@@ -30,22 +30,7 @@ def gen_all_roads_array(all_roads_raster_path):
     '''
     all_roads = gdal.Open(all_roads_raster_path, gdal.GA_ReadOnly)
     all_roads_dense = BandReadAsArray(all_roads.GetRasterBand(1))
-    all_roads_dense[all_roads_dense == -9999] = 0 #TODO could instead set nodata value to 0 in shp -> tif conversion
-    all_roads_dense = all_roads_dense.astype(dtype='bool') #TODO this should be done during shp -> tif
     return all_roads_dense
-
-# def clean_all_roads_array(all_roads_dense, REFTIF):
-#     # TODO becuase of the road segments that go partly outside of the image footprint,
-#     # there are some pixels in the rasterized any_rd.tif that have underlying -9999
-#     # values in the SAR tifs that result in the sparse images having ~3000 fewer pixels
-#     # than the sparse roads. Below is a quick fix, the long term solution is probably
-#     # to just mask out the road segments that are not within the SAR footprint, either
-#     # when creating the road shapefiles or rasters
-#     temp_img = gdal.Open(REFTIF, gdal.GA_ReadOnly) # arbitrary image choice
-#     temp_img_array = BandReadAsArray(temp_img.GetRasterBand(1))
-#     all_roads_dense[temp_img_array == -9999] = False
-#     return all_roads_dense
-#     #all_roads_dense.sum() # check that this value matches the size of each sparse image
 
 def gen_sparse_image(image, all_roads_dense):
     '''
