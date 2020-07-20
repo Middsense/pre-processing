@@ -45,7 +45,7 @@ start = time.time()
 
 # define data directory and set as working directory
 # (all subsequent paths are relative paths to DATA_DIR)
-DATA_DIR = '../data3/'
+DATA_DIR = '../data/'
 os.chdir(DATA_DIR)
 
 # define input paths
@@ -161,7 +161,7 @@ else:
     all_roads_raster = ROAD_RASTER_DIR+'all_roads_within_footprint.tif'
     out_mask = ROAD_RASTER_DIR+'all_roads_bool.tif'
     MASK_COMMAND = 'gdal_calc.py -A {} --calc="A != -9999" --outfile {}'.format(all_roads_raster, out_mask) +\
-    ' --co "COMPRESS=DEFLATE" --type=Byte --co="NBITS=1" --NoDataValue=0 --format Gtiff'
+    ' --co "COMPRESS=DEFLATE" --type=Byte --co="NBITS=1" --NoDataValue=0 --format Gtiff --quiet'
     os.system(MASK_COMMAND)
 
 # 10 setup a landcover raster output folder
@@ -209,7 +209,11 @@ for road_raster in glob(ROAD_RASTER_DIR + '*.tif'):
         print('skipping mask, {} already exists'.format(out))
     else:
         print('creating masked road raster {}'.format(out))
-        mask.mask(road_raster, LANDCOVER_MASKED, out)
+        #mask.mask(road_raster, LANDCOVER_MASKED, out)
+        MASK_COMMAND = 'gdal_calc.py -A {} -B {} --calc="-9999*(B==0) + A*(B==1)" --outfile {}'.format(road_raster, LANDCOVER_MASKED, out) +\
+        ' --co "COMPRESS=DEFLATE" --type=Float32 --NoDataValue=-9999 --format Gtiff --quiet'
+        os.system(MASK_COMMAND)
+
 
 ##############################################################################
 # at this point in pipeline, all intermediate files have been created, now we
