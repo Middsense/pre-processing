@@ -45,7 +45,7 @@ start = time.time()
 
 # define data directory and set as working directory
 # (all subsequent paths are relative paths to DATA_DIR)
-DATA_DIR = '../data2/'
+DATA_DIR = '../data3/'
 os.chdir(DATA_DIR)
 
 # define input paths
@@ -108,6 +108,7 @@ check_inputs()
 # write a .shp file for each year (2011-2015)
 # write a single .shp with all the road features (all years)
 # write a single .csv with all the road features (all years)
+# TODO maybe use separate directories for buffered/centerlines
 if os.path.exists(ROAD_SHP_DIR):
     print('skipping .gdb to .shp conversion, {} directory already exists'.format(ROAD_SHP_DIR))
 else:
@@ -203,7 +204,7 @@ else:
 
 # 20 mask OBJECT_ID (OID) rasters with landcover raster
 for road_raster in glob(ROAD_RASTER_DIR + '*.tif'):
-    out = road_raster[:-4] + '-masked.tif'
+    out = road_raster[:-4] + '_landcovermasked.tif'
     if os.path.exists(out):
         print('skipping mask, {} already exists'.format(out))
     else:
@@ -229,8 +230,9 @@ def gen_all_sparse():
     Generate all sparse images as dictionaries of sparse matrices and save as .npz
     """
     if os.path.exists(SPARSE_DIR):
-        print('sparse matrix directory already exists, skipping rater --> sparse matrix conversion')
+        print('sparse matrix directory already exists, skipping raster --> sparse matrix conversion')
     else:
+        print('generating sparse matrices and saving to .npz')
         os.mkdir(SPARSE_DIR)
         os.mkdir(SPARSE_DIR+'RAW/')
         os.mkdir(SPARSE_DIR+'DESPECKLED/')
@@ -240,53 +242,87 @@ def gen_all_sparse():
         all_roads_dense = gen_sparse.gen_all_roads_array(ROAD_RASTER_DIR+'all_roads_bool.tif')
 
         # Raw images
+        print('generating RAW SAR sparse matrices')
         raw_imgs = glob(RAW_SAR_DIR+'*.tif')
         sparse_raw = gen_sparse.gen_all_sparse_images(raw_imgs, all_roads_dense) # dict of 67 sparse matrices
-        save_sparse(sparse_raw, SPARSE_DIR+'RAW/')
+        save_sparse(sparse_raw, SPARSE_DIR+'raw/')
 
         # Despeckled images
+        print('generating DESPECKLED SAR sparse matrices (hang in there)')
         despeck_imgs = glob(DESPECK_SAR_DIR+'*.tif')
         sparse_despeck = gen_sparse.gen_all_sparse_images(despeck_imgs, all_roads_dense) #dict of 67 sparse matrices
-        save_sparse(sparse_despeck, SPARSE_DIR+'DESPECKLED/')
+        save_sparse(sparse_despeck, SPARSE_DIR+'despeckled/')
 
         # sparse matrices for single year road rasters
-        road_rasters = glob(ROAD_RASTER_DIR+'*.tif')
-        sparse_roads = gen_sparse.gen_all_sparse_roads(road_rasters) #out: list??
+        # this should generate 5 years * 2 (buffered/centerlines) * 2 (landcovermasked/notmasked) = 20 sparse matrices
+        print('generating road OID sparse matrices')
+        road_rasters = glob(ROAD_RASTER_DIR+'Staunton_Maint_[0-9]*.tif')
+        sparse_roads = gen_sparse.gen_all_sparse_roads(road_rasters) #dict of sparse matrices for each road raster
         save_sparse(sparse_roads, SPARSE_DIR+'roads/')
 
+# TODO comment
+gen_all_sparse()
 
 # now that we have all the data loaded into memory, we'll do summarization calculations
 # for each (road, SAR image) pair
 # TODO logic to loop through the pairs/combinations
 
 # load the sparse matrices back from files into memory
-#for sar_sparse in glob(SPARSE_IMAGE_DIR)
+# for sar_sparse in glob(SPARSE_IMAGE_DIR)
 
 # choose SAR {raw, despeck}
-# choose road {centerlines, buffered, buffered and masked by landcover}
-SPARSE_IMAGE_DIR = './Sparse/DESPECKLED/'
-SPARSE_ROAD_DIR = './Sparse/Roads/'
+# choose road {centerlines, buffered, centerlines masked by landcover, buffered masked by landcover}
+# TODO could load into memory before looping, low priority
 
+rd_groups = ['All_Buf12_10_10_within_footprint.npz', 'All_Buf12_10_10_within_footprint_landcovermasked.npz',\
+     'All_within_footprint.npz', 'All_within_footprint_landcovermasked.npz']
+
+bad = 0
+good = 0
+bad_list = []
+good_list = []
 concat_list = []
 
-for sar_sparse in glob(SPARSE_IMAGE_DIR + '*'):
-    img = sparse.load_npz(sar_sparse)
-    for road_sparse in glob(SPARSE_ROAD_DIR + '*'):
-        rd = sparse.load_npz(road_sparse)
+bad_imgs = []
+bad_rds = []
+good_imgs=[]
+good_rds = []
 
-        img_masked = img.multiply(rd > 0).tocoo()
-        # check same size
-        if img_masked.shape != rd.shape:
-            print('error, sparse matrix sizes dont match!!!')
+diff_size = []
 
-        # convert to DataFrame
-        sar_col_name = sar_sparse[0:8] # slice date from SAR filename #TODO need to handle raw/despeck
-        pixels = pd.DataFrame({
-            'oid': rd.data,
-            sar_col_name: img_masked.data
-        })
+for img_dir in ['RAW/', 'DESPECKLED/']: # 2
+    for img_path in glob(SPARSE_DIR + img_dir + '*'): # 67
+        img = sparse.load_npz(img_path)
+        for rd_group in rd_groups: # 4
+            for rd_path in glob(SPARSE_DIR + 'roads/' + '*' + rd_group): #
+                rd = sparse.load_npz(rd_path)
 
-        concat_list.append(pixels)
+                # mask SAR image to only pixels where there was an OID road segment that year
+                img_masked = img.multiply(rd > 0).tocoo()
+                # # check same size
+                if img_masked.size != rd.size:
+                    #bad += 1
+                    #bad_list.append((img_path, rd_path))
+                    # bad_imgs.append(img_path)
+                    # bad_rds.append(rd_path)
+                    diff_size.append(img_masked.size - rd.size)
+
+                    #print('error, sparse matrix sizes dont match!!!')
+                else:
+                    #good += 1
+                    good_list.append((img_path, rd_path))
+                    good_imgs.append(img_path)
+                    #good_rds.append(rd_path)
+                    #print('length matches')
+
+                # convert to DataFrame
+                sar_col_name = sar_sparse[0:8] # slice date from SAR filename #TODO need to handle raw/despeck
+                pixels = pd.DataFrame({
+                    'oid': rd.data,
+                    sar_col_name: img_masked.data
+                })
+
+                concat_list.append(pixels)
 
 
 
