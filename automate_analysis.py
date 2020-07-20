@@ -52,10 +52,13 @@ os.chdir(DATA_DIR)
 
 # road quality data (a .gdb and the layers we want in that .gdb)
 ROAD_GDB = './Staunton_Maint.gdb'
-SINGLE_YEAR_ROAD_LAYERS = [
+BUFFERED_SINGLE_YEAR_ROAD_LAYERS = [
     'Staunton_Maint_2011_All_Buf12_10_10', 'Staunton_Maint_2012_All_Buf12_10_10',
     'Staunton_Maint_2013_All_Buf12_10_10', 'Staunton_Maint_2014_All_Buf12_10_10',
     'Staunton_Maint_2015_All_Buf12_10_10']
+CENTERLINE_SINGLE_YEAR_ROAD_LAYERS = ['Staunton_Maint_2011_All', 'Staunton_Maint_2012_All',
+    'Staunton_Maint_2013_All', 'Staunton_Maint_2014_All', 'Staunton_Maint_2015_All']
+
 
 # landcover data
 LANDCOVER_TILE_DIR = './Raster_Tiles_AOI/'
@@ -73,6 +76,7 @@ ROAD_SHP_DIR = './road-shapefiles/'
 ROAD_RASTER_DIR = './road-rasters/'
 LANDCOVER_RASTER_DIR = './landcover-rasters/'
 CSV_DIR = './csv/'
+SPARSE_DIR = './sparse/'
 
 # files
 LANDCOVER_MERGED = LANDCOVER_RASTER_DIR + 'landcover-merged.tif'
@@ -114,7 +118,7 @@ else:
 
     out_gdfs = []
 
-    for layer in SINGLE_YEAR_ROAD_LAYERS:
+    for layer in BUFFERED_SINGLE_YEAR_ROAD_LAYERS + CENTERLINE_SINGLE_YEAR_ROAD_LAYERS:
 
         # read directly from .gdb with geopandas
         in_layer = gpd.read_file(filename=ROAD_GDB, layer=layer)
@@ -123,10 +127,12 @@ else:
         join = gpd.sjoin(in_layer, footprint, how='left', op='within')
         join = join.loc[join['index_right'] == 0]
 
-
         outshp = layer + '_within_footprint.shp'
         join.to_file(ROAD_SHP_DIR + outshp)
-        out_gdfs.append(join)
+
+        # only output a merged all_roads csv and shapefile for the buffered roads
+        if layer[-12:] == '_Buf12_10_10':
+            out_gdfs.append(join)
 
     # merge all features from all years
     all_road_features = pd.concat(out_gdfs)
@@ -146,16 +152,17 @@ else:
         OUTTIF = shp.replace(ROAD_SHP_DIR, ROAD_RASTER_DIR).replace('.shp', '.tif')
         v2r.vector2raster(shp, OUTTIF, RAW_SAR_DIR + REFTIF, ['ATTRIBUTE=OBJECTID'])
 
-# TODO: reclass, any_rd should be   boolean mask
+# 02 create all roads boolean raster (a mask for creating sparse SAR matrices)
 if os.path.exists(ROAD_RASTER_DIR + 'all_roads_bool.tif'):
     print('skipping creating road mask "all_roads_bool.tif"')
 else:
     print('creating road mask "all_roads_bool.tif"')
     all_roads_raster = ROAD_RASTER_DIR+'all_roads_within_footprint.tif'
     out_mask = ROAD_RASTER_DIR+'all_roads_bool.tif'
-    MASK_COMMAND = 'gdal_calc.py -A {} --calc="1 * (A != -9999)" --outfile {}'.format(all_roads_raster, out_mask) +\
-    ' --co "COMPRESS=DEFLATE" --type=Byte --co NBITS=1 --format Gtiff'
+    MASK_COMMAND = 'gdal_calc.py -A {} --calc="A != -9999" --outfile {}'.format(all_roads_raster, out_mask) +\
+    ' --co "COMPRESS=DEFLATE" --type=Byte --co="NBITS=1" --NoDataValue=0 --format Gtiff'
     os.system(MASK_COMMAND)
+
 # 10 setup a landcover raster output folder
 if not os.path.exists(LANDCOVER_RASTER_DIR):
     os.mkdir(LANDCOVER_RASTER_DIR)
@@ -182,7 +189,7 @@ if os.path.exists(LANDCOVER_REPROJECTED):
     print('skipping reprojection, {} already exists'.format(LANDCOVER_REPROJECTED))
 else:
     print("reprojecting landcover raster and matching resolution")
-    crr.convert_resolution(LANDCOVER_MERGED, LANDCOVER_REPROJECTED, REFTIF)
+    crr.convert_resolution(LANDCOVER_MERGED, LANDCOVER_REPROJECTED, RAW_SAR_DIR + REFTIF)
 
 # 13 reclassify to create road mask
 if os.path.exists(LANDCOVER_MASKED):
@@ -217,33 +224,71 @@ def save_sparse(sparse_dict, path):
     for key in sparse_dict:
         sparse.save_npz(path+key, sparse_dict[key])
 
-
 def gen_all_sparse():
     """
-    Generate all sparse images as a dictionary of sparse matrices and save as .npz
+    Generate all sparse images as dictionaries of sparse matrices and save as .npz
     """
-    # dense roads to mask each SAR image during conversion to sparse matrix (output is numpy array)
-    all_roads_dense = gen_sparse.gen_all_roads_array(ROAD_RASTER_DIR+'all_roads_bool.tif')
+    if os.path.exists(SPARSE_DIR):
+        print('sparse matrix directory already exists, skipping rater --> sparse matrix conversion')
+    else:
+        os.mkdir(SPARSE_DIR)
+        os.mkdir(SPARSE_DIR+'RAW/')
+        os.mkdir(SPARSE_DIR+'DESPECKLED/')
+        os.mkdir(SPARSE_DIR+'roads/')
 
-    # Raw images
-    raw_imgs = glob(RAW_SAR_DIR+'*.tif')
-    sparse_raw = gen_sparse.gen_all_sparse_images(raw_imgs, all_roads_dense) # dict of 67 sparse matrices
-    # TODO: SAVE AS .npz
-    # save_sparse(sparse_raw)
+        # dense roads to mask each SAR image during conversion to sparse matrix (output is numpy array)
+        all_roads_dense = gen_sparse.gen_all_roads_array(ROAD_RASTER_DIR+'all_roads_bool.tif')
 
-    # Despeckled images
-    despeck_imgs = glob(DESPECK_SAR_DIR+'*.tif')
-    sparse_raw = gen_sparse.gen_all_sparse_images(despeck_imgs, all_roads_dense) #dict of 67 sparse matrices
-    # TODO: SAVE AS .npz
+        # Raw images
+        raw_imgs = glob(RAW_SAR_DIR+'*.tif')
+        sparse_raw = gen_sparse.gen_all_sparse_images(raw_imgs, all_roads_dense) # dict of 67 sparse matrices
+        save_sparse(sparse_raw, SPARSE_DIR+'RAW/')
 
-    # sparse matrices for single year road rasters
-    road_rasters = glob(ROAD_RASTER_DIR+'*.tif')
-    sparse_roads = gen_sparse.gen_all_sparse_roads(road_rasters) #out: list??
-    # TODO save as .npz
+        # Despeckled images
+        despeck_imgs = glob(DESPECK_SAR_DIR+'*.tif')
+        sparse_despeck = gen_sparse.gen_all_sparse_images(despeck_imgs, all_roads_dense) #dict of 67 sparse matrices
+        save_sparse(sparse_despeck, SPARSE_DIR+'DESPECKLED/')
+
+        # sparse matrices for single year road rasters
+        road_rasters = glob(ROAD_RASTER_DIR+'*.tif')
+        sparse_roads = gen_sparse.gen_all_sparse_roads(road_rasters) #out: list??
+        save_sparse(sparse_roads, SPARSE_DIR+'roads/')
+
 
 # now that we have all the data loaded into memory, we'll do summarization calculations
 # for each (road, SAR image) pair
 # TODO logic to loop through the pairs/combinations
+
+# load the sparse matrices back from files into memory
+#for sar_sparse in glob(SPARSE_IMAGE_DIR)
+
+# choose SAR {raw, despeck}
+# choose road {centerlines, buffered, buffered and masked by landcover}
+SPARSE_IMAGE_DIR = './Sparse/DESPECKLED/'
+SPARSE_ROAD_DIR = './Sparse/Roads/'
+
+concat_list = []
+
+for sar_sparse in glob(SPARSE_IMAGE_DIR + '*'):
+    img = sparse.load_npz(sar_sparse)
+    for road_sparse in glob(SPARSE_ROAD_DIR + '*'):
+        rd = sparse.load_npz(road_sparse)
+
+        img_masked = img.multiply(rd > 0).tocoo()
+        # check same size
+        if img_masked.shape != rd.shape:
+            print('error, sparse matrix sizes dont match!!!')
+
+        # convert to DataFrame
+        sar_col_name = sar_sparse[0:8] # slice date from SAR filename #TODO need to handle raw/despeck
+        pixels = pd.DataFrame({
+            'oid': rd.data,
+            sar_col_name: img_masked.data
+        })
+
+        concat_list.append(pixels)
+
+
 
 # for each of sparse matrices (img, rd):
     # img_masked = img.multiply(rd > 0).tocoo()
