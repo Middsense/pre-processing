@@ -88,7 +88,7 @@ def gen_all_sparse_roads(road_raster_list):
     nroads = len(road_raster_list)
     progress = 0
     for road_raster in road_raster_list:
-        road_labels.append(road_raster.split('/')[-1][9:13]) # TODO different slicing for masked roads
+        road_labels.append(road_raster.split('/')[-1][:-4])
         sparse_roads.append(gen_sparse_roads(road_raster))
 
         progress+=1
