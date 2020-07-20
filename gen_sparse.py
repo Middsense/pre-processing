@@ -38,39 +38,63 @@ def gen_sparse_image(image, all_roads_dense):
     '''
     img = gdal.Open(image, gdal.GA_ReadOnly)
     img_dense = BandReadAsArray(img.GetRasterBand(1))
+
     img_dense[img_dense == 0] = -1 # so we don't lose the zero values when we convert to sparse matrix
     img_dense[img_dense == -9999] = 0 # so converting to sparse matrix removes nodata (-9999) values
     img_dense[all_roads_dense == False] = 0 # masks out non-road pixels from SAR image
     img_sparse = sparse.coo_matrix(img_dense) # dense np array --> sparse matrix
+
     return img_sparse
 
 def gen_all_sparse_images(sar_image_list, all_roads_dense):
     """
-    loop through all images, generate sparse versions, add them to a list
+    loop through all images, generate sparse versions, add them to a dictionary
     TODO or dictionary with key = (date)_(raw/despeck)
     """
     sparse_images = []
     image_labels = []
+
+    nimgs = len(sar_image_list)
+    progress = 0
     for image in sar_image_list:
         image_labels.append(image.split('/')[-1][0:8]) # TODO verify we're getting just the date
         sparse_images.append(gen_sparse_image(image, all_roads_dense))
+
+        progress += 1
+        print('Generated '+str(progress)+' of '+str(nimgs)+' sparse SAR matrices')
+
     image_dict = dict(zip(image_labels, sparse_images))
     return image_dict
 
 def gen_sparse_roads(road_raster):
+    """
+    Generate a single sparse road (OID) image
+    """
     roads = gdal.Open(road_raster, gdal.GA_ReadOnly)
     roads_dense = BandReadAsArray(roads.GetRasterBand(1))
+
     roads_dense[roads_dense == -9999] = 0
     roads_sparse = sparse.coo_matrix(roads_dense)
+
     return roads_sparse
 
 def gen_all_sparse_roads(road_raster_list):
+    """
+    Loops through all road images, generates sparse versions, and adds them to a dictionary
+    """
     sparse_roads = []
     road_labels = []
+
+    nroads = len(road_raster_list)
+    progress = 0
     for road_raster in road_raster_list:
-        road_labels.append(road_raster.split('/')[-1][9:13]) # TODO different slicing for masked roads
+        road_labels.append(road_raster.split('/')[-1][:-4])
         sparse_roads.append(gen_sparse_roads(road_raster))
-    road_dict = dict(zip(sparse_roads, road_labels))
+
+        progress+=1
+        print('Generated '+str(progress)+' of '+str(nroads)+' sparse road matrices')
+
+    road_dict = dict(zip(road_labels, sparse_roads))
     return road_dict
 
 
