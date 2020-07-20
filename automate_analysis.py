@@ -21,6 +21,7 @@ import os
 import time
 from glob import glob
 import pandas as pd
+import numpy as np
 from scipy import sparse
 
 import vector2raster as v2r
@@ -28,6 +29,7 @@ import change_raster_resolution as crr
 #import raster2table as r2t
 import gen_sparse
 import mask
+import summarize
 
 # TODO using these libraries should probably happen just in other files
 # called by automate_analysis
@@ -238,21 +240,21 @@ def gen_all_sparse():
     else:
         print('generating sparse matrices and saving to .npz')
         os.mkdir(SPARSE_DIR)
-        os.mkdir(SPARSE_DIR+'RAW/')
-        os.mkdir(SPARSE_DIR+'DESPECKLED/')
+        os.mkdir(SPARSE_DIR+'raw/')
+        os.mkdir(SPARSE_DIR+'despeckled/')
         os.mkdir(SPARSE_DIR+'roads/')
 
         # dense roads to mask each SAR image during conversion to sparse matrix (output is numpy array)
         all_roads_dense = gen_sparse.gen_all_roads_array(ROAD_RASTER_DIR+'all_roads_bool.tif')
 
         # Raw images
-        print('generating RAW SAR sparse matrices')
+        print('generating raw SAR sparse matrices')
         raw_imgs = glob(RAW_SAR_DIR+'*.tif')
         sparse_raw = gen_sparse.gen_all_sparse_images(raw_imgs, all_roads_dense) # dict of 67 sparse matrices
         save_sparse(sparse_raw, SPARSE_DIR+'raw/')
 
         # Despeckled images
-        print('generating DESPECKLED SAR sparse matrices (hang in there)')
+        print('generating despeckled SAR sparse matrices (hang in there)')
         despeck_imgs = glob(DESPECK_SAR_DIR+'*.tif')
         sparse_despeck = gen_sparse.gen_all_sparse_images(despeck_imgs, all_roads_dense) #dict of 67 sparse matrices
         save_sparse(sparse_despeck, SPARSE_DIR+'despeckled/')
@@ -264,121 +266,84 @@ def gen_all_sparse():
         sparse_roads = gen_sparse.gen_all_sparse_roads(road_rasters) #dict of sparse matrices for each road raster
         save_sparse(sparse_roads, SPARSE_DIR+'roads/')
 
-# TODO comment
-gen_all_sparse()
+# Generate and save all sparse matrices: raw, despeck, and roads
+# gen_all_sparse()
 
-# now that we have all the data loaded into memory, we'll do summarization calculations
-# for each (road, SAR image) pair
-# TODO logic to loop through the pairs/combinations
-
-# load the sparse matrices back from files into memory
-# for sar_sparse in glob(SPARSE_IMAGE_DIR)
-
-# choose SAR {raw, despeck}
-# choose road {centerlines, buffered, centerlines masked by landcover, buffered masked by landcover}
 # TODO could load into memory before looping, low priority
 
-rd_groups = ['All_Buf12_10_10_within_footprint.npz', 'All_Buf12_10_10_within_footprint_landcovermasked.npz',\
-     'All_within_footprint.npz', 'All_within_footprint_landcovermasked.npz']
+"""
+Summarizing!
+"""
 
-bad = 0
-good = 0
-bad_list = []
-good_list = []
-concat_list = []
+sar_type = ['raw/', 'despeckled/']
+buffer_type = ['All_Buf12_10_10_within_footprint', 'All_within_footprint']
+mask_type = ['_landcovermasked.npz', '.npz']
 
-bad_imgs = []
-bad_rds = []
-good_imgs=[]
-good_rds = []
+# list of possible combinations of data sources (raw/despeck, buffered/not buffered, masked/unmasked)
+datagroups = np.array(np.meshgrid(sar_type, buffer_type, mask_type)).T.reshape(-1, 3)
+names = np.array(np.meshgrid(['raw', 'despeck'], ['buffered', 'centerline'], ['masked', 'unmasked'])).T.reshape(-1, 3)
 
-diff_size = []
+# 31 Generates a .csv file for each combination of data inputs
+for i, dg in enumerate(datagroups):
+    # TODO: fix file naming thing - iterate for i in range(len(datagroups)) here !!!!!!!!!!!!
+    # or enumerate thing
 
-for img_dir in ['RAW/', 'DESPECKLED/']: # 2
-    for img_path in glob(SPARSE_DIR + img_dir + '*'): # 67
+    # For each .csv, we summarize each image over the road files for each year:
+    summarylist = []
+
+    # Each image in selected stack (raw/despeck)
+    for img_path in glob(SPARSE_DIR + dg[0] + '*'):
+
         img = sparse.load_npz(img_path)
-        for rd_group in rd_groups: # 4
-            for rd_path in glob(SPARSE_DIR + 'roads/' + '*' + rd_group): #
-                rd = sparse.load_npz(rd_path)
 
-                # mask SAR image to only pixels where there was an OID road segment that year
-                img_masked = img.multiply(rd > 0).tocoo()
-                # # check same size
-                if img_masked.size != rd.size:
-                    #bad += 1
-                    #bad_list.append((img_path, rd_path))
-                    # bad_imgs.append(img_path)
-                    # bad_rds.append(rd_path)
-                    diff_size.append(img_masked.size - rd.size)
+        concat_list = []
 
-                    #print('error, sparse matrix sizes dont match!!!')
-                else:
-                    #good += 1
-                    good_list.append((img_path, rd_path))
-                    good_imgs.append(img_path)
-                    #good_rds.append(rd_path)
-                    #print('length matches')
+        # Each year of road segments matching the road type we want
+        for rd_path in glob(SPARSE_DIR + 'roads/*' + dg[1] + dg[2]):
 
-                # convert to DataFrame
-                sar_col_name = sar_sparse[0:8] # slice date from SAR filename #TODO need to handle raw/despeck
-                pixels = pd.DataFrame({
-                    'oid': rd.data,
-                    sar_col_name: img_masked.data
-                })
+            rd = sparse.load_npz(rd_path)
 
-                concat_list.append(pixels)
+            # mask SAR image to only pixels where there was an OID road segment that year
+            img_masked = img.multiply(rd > 0).tocoo()
+            rd_masked = rd.multiply((img_masked > 0) + (img_masked == -1)).tocoo()
+
+            # Check that the masked files are the same size
+            if img_masked.size != rd_masked.size:
+                print('error, sparse matrix sizes dont match!!!')
+
+            # Convert to DataFrame
+            sar_col_name = img_path.split('/')[-1][0:8] + '_'
 
 
+            pixels = pd.DataFrame({
+                'oid':rd_masked.data,
+                'amp': img_masked.data
+            })
 
-# for each of sparse matrices (img, rd):
-    # img_masked = img.multiply(rd > 0).tocoo()
-    # pixels = pd.DataFrame({
-    #     'oid': rd.data,
-    #     'amp': img_masked.data
-    # })
-    # summarize(pixels)
+            pixels = pixels.replace(-1, 0)
 
-# TODO logic to get all these summary stats into a nice DataFrame with
-# columns labels in format "SARdate_statistic" --> "20110829_mean"
-# rows labels OID
-# filenames: stats_raw/despeck_landcover/nomask_centerline/buffered.csv
+            concat_list.append(pixels)
 
-# 30 summarize into .csv
-def generate_csv(masked_by_landcover, despeckled):
-    '''
-    masked_by_landcover: {True, False}
-    despeckled: {True, False}
-    '''
-    if masked_by_landcover:
-        mask_tifs = glob(ROAD_RASTER_DIR + '*masked.tif')
-        mask_tag = 'landcover_mask'
-    else:
-        mask_tifs = glob(ROAD_RASTER_DIR + '*[0-9].tif')
-        mask_tag = 'no_mask'
 
-    if despeckled:
-        data_tifs = glob(DESPECK_SAR_DIR + '*.tif')
-        despeck_tag = 'despeck'
-    else:
-        data_tifs = glob(RAW_SAR_DIR + '*.tif')
-        despeck_tag = 'raw'
+        # concatenate year lists for this image
+        all_oids = pd.concat(concat_list, axis=0)
 
-    out_path = str('{}_{}_{}_sar_amplitude_all_images_all_roads.csv'.format(\
-        CSV_DIR, despeck_tag, mask_tag))
-    print('starting to create ' + out_path)
+        # Summarize !!!!
+        summarized = summarize.all_metrics(all_oids)
+        summarized.columns = sar_col_name + summarized.columns
 
-    # TODO no longer using merge....
-    #r2t.merge(mask_tifs, data_tifs, out_path)
+        # list of dataframes by image
+        summarylist.append(summarized)
 
-# def generate_all_csvs():
-#     '''
-#     generate output csvs for all combinations of options
-#     '''
-#     for i in [False]: #[True, False]:
-#         for j in [True, False]:
-#             for method in ['mean', 'median', 'count']:
-#                 generate_csv(i, j, method)
-#
-# generate_all_csvs()
+
+    fullsummary = pd.concat(summarylist, axis=1)
+
+    out_path = str('{}_{}_{}_{}.csv'.format(\
+             CSV_DIR, names[i][0], names[i][1], names[i][2]))
+
+    print('summarized ' + out_path)
+
+    fullsummary.to_csv(out_path)
+
 
 print('total runtime (s): ' + str(time.time() - start))
