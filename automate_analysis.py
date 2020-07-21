@@ -202,7 +202,7 @@ else:
     os.system(reclass_command)
 
 # 20 mask OBJECT_ID (OID) rasters with landcover raster
-for road_raster in glob(ROAD_RASTER_DIR + '*.tif'):
+for road_raster in glob(ROAD_RASTER_DIR + '*within_footprint.tif'):
     out = road_raster[:-4] + '_landcovermasked.tif'
     if os.path.exists(out):
         print('skipping mask, {} already exists'.format(out))
@@ -335,6 +335,7 @@ for i, dg in enumerate(datagroups):
 
 
     fullsummary = pd.concat(summarylist, axis=1)
+    fullsummary.index.name = 'oid'
 
     out_path = str('{}{}_{}_{}.csv'.format(\
              CSV_DIR, names[i][0], names[i][1], names[i][2]))
