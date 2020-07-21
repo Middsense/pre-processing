@@ -281,6 +281,8 @@ mask_type = ['_landcovermasked.npz', '.npz']
 datagroups = np.array(np.meshgrid(sar_type, buffer_type, mask_type)).T.reshape(-1, 3)
 names = np.array(np.meshgrid(['raw', 'despeck'], ['buffered', 'centerline'], ['masked', 'unmasked'])).T.reshape(-1, 3)
 
+
+print('Summarizing...')
 # 31 Generates a .csv file for each combination of data inputs
 for i, dg in enumerate(datagroups):
 
@@ -334,7 +336,7 @@ for i, dg in enumerate(datagroups):
 
     fullsummary = pd.concat(summarylist, axis=1)
 
-    out_path = str('{}_{}_{}_{}.csv'.format(\
+    out_path = str('{}{}_{}_{}.csv'.format(\
              CSV_DIR, names[i][0], names[i][1], names[i][2]))
 
     print('summarized ' + out_path)

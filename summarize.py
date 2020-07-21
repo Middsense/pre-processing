@@ -15,7 +15,7 @@ def zero_count(df):
   """
   count number of amplitude 0s per object
   only calculates count for objects with any zeros, zero-filling occurs later
-  """ 
+  """
   return df.loc[df['amp']==0, 'oid'].value_counts()
 
 def total_count(df):
@@ -54,17 +54,17 @@ def all_metrics(df):
   zero = zero_count(df).rename('zero_count')
 
   # group by OID
-  grouped = df.groupby('oid')
+  grouped = df.groupby('oid', as_index=True)
 
   # quantiles
   quant = quantiles(grouped)
 
   # mean and median
-  mean = grouped.mean()
-  median = grouped.median()
+  mean = grouped.mean().rename(columns={'amp':'mean'})
+  median = grouped.median().rename(columns={'amp':'median'})
 
   merge = pd.concat([mean, median, count, zero, quant], axis=1, join='outer')
-  merge.rename(columns='amp': 'mean', 'amp.1': 'median')
-  merge.fillna(0) # fill 0s for zero_count column
+  # merge = merge.rename(columns={'amp': 'mean', 'amp.1': 'median'})
+  merge = merge.fillna(0) # fill 0s for zero_count column
 
   return merge
