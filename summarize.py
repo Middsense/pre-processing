@@ -7,12 +7,6 @@ functions to compute summary statistics on amplitude data
 import numpy as np
 import pandas as pd
 
-from osgeo import ogr, osr, gdal
-
-from glob import glob
-import argparse
-
-
 """
 Summary Functions
 """
@@ -20,14 +14,15 @@ Summary Functions
 def zero_count(df):
   """
   count number of amplitude 0s per object
-  # TODO: add value for segments with 0 0s
-  """
+  only calculates count for objects with any zeros, zero-filling occurs later
+  """ 
   return df.loc[df['amp']==0, 'oid'].value_counts()
 
 def total_count(df):
   """
   counts number of pixels in region
-  # TODO: data type????/
+  # TODO: data type????/ - myles looked at this, don't think its worth fiddling with
+
   """
   return df['oid'].value_counts()
 
@@ -69,5 +64,7 @@ def all_metrics(df):
   median = grouped.median()
 
   merge = pd.concat([mean, median, count, zero, quant], axis=1, join='outer')
+  merge.rename(columns='amp': 'mean', 'amp.1': 'median')
+  merge.fillna(0) # fill 0s for zero_count column
 
   return merge
