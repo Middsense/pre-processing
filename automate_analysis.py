@@ -19,14 +19,13 @@ usage:
 
 import os
 import time
-from glob import glob
 import pandas as pd
 import numpy as np
+from glob import glob
 from scipy import sparse
 
 import vector2raster as v2r
 import change_raster_resolution as crr
-#import raster2table as r2t
 import gen_sparse
 import mask
 import summarize
@@ -104,13 +103,11 @@ check_inputs()
 
 # 00
 # TODO this should probably get its own file or at least method
-# TODO need to handle creating an all_roads.shp (and raster also)
 # read in road maintenance .gdb
 # select only features completely within footprint
-# write a .shp file for each year (2011-2015)
-# write a single .shp with all the road features (all years)
+# write a .shp file for each year (2011-2015), both for buffered and centerline roads
+# write a .shp with all road features (all years), both for buffered and centerline roads
 # write a single .csv with all the road features (all years)
-# TODO maybe use separate directories for buffered/centerlines
 if os.path.exists(ROAD_SHP_DIR):
     print('skipping .gdb to .shp conversion, {} directory already exists'.format(ROAD_SHP_DIR))
 else:
@@ -222,7 +219,8 @@ for road_raster in glob(ROAD_RASTER_DIR + '*.tif'):
 # proceed by summarizing the SAR data by road segment into tables/csvs
 ##############################################################################
 
-# 30 load the SAR images and road rasters into memory as sparse matrices
+# 30 generate sparse matrix versions of the road rasters and SAR images
+# clipped to the road pixels, and save these sparse matrices as files (.npz)
 
 def save_sparse(sparse_dict, path):
     """
@@ -285,8 +283,6 @@ names = np.array(np.meshgrid(['raw', 'despeck'], ['buffered', 'centerline'], ['m
 
 # 31 Generates a .csv file for each combination of data inputs
 for i, dg in enumerate(datagroups):
-    # TODO: fix file naming thing - iterate for i in range(len(datagroups)) here !!!!!!!!!!!!
-    # or enumerate thing
 
     # For each .csv, we summarize each image over the road files for each year:
     summarylist = []
