@@ -82,8 +82,8 @@ def all_metrics(df):
   joined = df.join(merge, on='oid', how='left')
 
   # filter the pixels within the min_boxplot and max_boxplot values for that rd segment
-  filtered = joined.loc[joined['amp'].gt(joined['min_boxplot'])\
-                      & joined['amp'].lt(joined['max_boxplot'])]
+  filtered = joined.loc[joined['amp'].ge(joined['min_boxplot'])\
+                      & joined['amp'].le(joined['max_boxplot'])]
 
   # calculate std and mean on the filtered pixels
   filtered_mean = filtered.groupby('oid')['amp'].mean().rename('filtered_mean')
