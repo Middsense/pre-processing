@@ -1,7 +1,9 @@
 """
 merge_clean.py
 Abigail Stone
-7/6/2020
+
+Created: 7/6/2020
+Last updated: 7/24/2020
 
 Some data cleaning to remove outliers and null values; preparation for classification
 Inputs are speciific outputs from other middsense scripts
@@ -10,9 +12,7 @@ Inputs:
     amplitude_csv: .csv with aggregated amplitude values for each road segment and image
     road_csv: .csv of all road features (from original road segment .gdb)
 
-** VERY PRELIMINARY **
-This doesn't do much at the moment but eventually we'll want to remove outliers other
-than 0 based on IQR calculations
+Mostly from the Pavement_Quality_V2 notebook
 """
 
 import argparse
@@ -28,8 +28,7 @@ def join_roads(roads, data):
     """
     Join aggregated amplitude values to each road segment
     """
-
-    merged = roads.set_index(roads.OBJECTID).join(data.set_index(data.OID), how='right')
+    merged = roads.join(data, how='right')
 
     return merged
 
@@ -41,7 +40,21 @@ def clean(df):
     # remove invalid IRI values (0 and -1)
     df = df.loc[df['NIRI_Avg'] > 0]
 
-    # TODO:  eventually we'll want to remove outliers here (based on IQR stats, etc.)
+    # remove road segments with pavement quality from before 2011 or after 2014
+    df = df.loc[(df['Date_Teste'] < 20150000) & (df['Date_Teste'] > 20110000)]
+
+    # add a closest date column
+    SAR_DATES = np.array([c[0:8] for c in df.columns if '_filtered_mean' in c]).astype(int)
+    SAR_DATES = np.sort(SAR_DATES)
+    df['closest_date'] = df.apply(lambda row: np.min(np.where(SAR_DATES >= row['Date_Teste'], SAR_DATES, 99999999)), axis=1)
+
+    # add CLOSEST mean/median
+    df['closest_mean'] = df.apply(lambda row: row[str(row['closest_date'])+'_filtered_mean'], axis=1)
+    df['closest_median'] = df.apply(lambda row: row[str(row['closest_date'])+'_median'], axis=1)
+    df['closest_std'] = df.apply(lambda row: row[str(row['closest_date'])+'_filtered_std'], axis=1)
+
+    # mark rows containing zero amplitude values (True/False contains zeros in at least one image)
+    df['zeroamp'] = df.apply(lambda row: not np.any([row[c] for c in temp.columns if 'zero_count' in c]), axis=1)
 
     return df
 
@@ -63,12 +76,17 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    roads = pd.read_csv(args.road_csv)
-    data = pd.read_csv(args.amplitude_csv)
+    # Read input and index
+    roads = pd.read_csv(args.road_csv, index_col='OBJECTID')
+    data = pd.read_csv(args.amplitude_csv, index_col='oid')
 
+    # join
     joined = join_roads(roads, data)
+
+    # filtering and cleaning
     cleaned = clean(joined)
 
+    # Output
     if args.csv:
         cleaned.to_csv(path_or_buf=args.out_path)
     else:
