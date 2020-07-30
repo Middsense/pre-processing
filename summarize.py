@@ -26,7 +26,7 @@ def total_count(df):
   """
   return df['oid'].value_counts()
 
-def quantiles(grouped):
+def quantiles(grouped, LOG_FILTER):
   """
   computes quantiles, iqr, and min and max of iqr
   """
@@ -40,24 +40,33 @@ def quantiles(grouped):
   min = q1 - iqr_prod
   max = q3 + iqr_prod
 
+  # if using log noise reduction, exponentiate
+  if LOG_FILTER:
+      iqr = np.exp(iqr - 1)
+      min = np.exp(min - 1)
+      max = np.exp(max - 1)
+
   # concatenate
   out = pd.concat([q1, q3, iqr, min, max], axis=1)
   out.columns = ['q1', 'q3', 'iqr', 'min_boxplot', 'max_boxplot']
 
   return out
 
-def all_metrics(df):
+def all_metrics(df, LOG_FILTER):
   """
   compute all summaries
   """
   count = total_count(df).rename('count')
   zero = zero_count(df).rename('zero_count')
 
+  if LOG_FILTER:
+      df['amp'] = np.log(1 + df['amp'])
+
   # group by OID
   grouped = df.groupby('oid', as_index=True)
 
   # quantiles
-  quant = quantiles(grouped)
+  quant = quantiles(grouped, LOG_FILTER)
 
   # built in pandas functions
   # mean, median, stddev, min, max (not boxplot min/max)
@@ -67,16 +76,16 @@ def all_metrics(df):
   min = grouped.min().rename(columns={'amp': 'min'})
   max = grouped.max().rename(columns={'amp': 'max'})
 
+  # if we're using log noise reduction
+  if LOG_FILTER:
+      mean  = np.exp(mean - 1)
+      median = np.exp(median - 1)
+      std = np.exp(std - 1)
+      min = np.exp(min - 1)
+      max = np.exp(max - 1)
+
   merge = pd.concat([mean, median, count, zero, quant, std, min, max], axis=1, join='outer')
   merge = merge.fillna(0) # fill 0s for zero_count column
-
-  # mean and stddev on the data filtered by the boxplot min and max
-  # amp = df.set_index('oid')['amp']
-  # filtered = amp.gt(merge['min_boxplot']) & amp.lt(merge['max_boxplot'])
-  # filtered_mean = filtered.groupby(filtered.index).mean().rename('filtered_mean')
-  # filtered_std = filtered.groupby(filtered.index).std().rename('filtered_std')
-  # merge2 = pd.concat([merge, filtered_mean, filtered_std], axis=1, join='outer')
-  # merge2 = merge2.drop(columns={'iqr', 'min_boxplot', 'max_boxplot'})
 
   # join the pixels with the road-level stats
   joined = df.join(merge, on='oid', how='left')

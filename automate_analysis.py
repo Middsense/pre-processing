@@ -49,6 +49,10 @@ start = time.time()
 DATA_DIR = '../data/'
 os.chdir(DATA_DIR)
 
+# compute statistics with log:
+# for example: exp(avg(log(data)))
+LOG_FILTER = False
+
 # define input paths
 
 # road quality data (a .gdb and the layers we want in that .gdb)
@@ -327,7 +331,7 @@ for i, dg in enumerate(datagroups):
         all_oids = pd.concat(concat_list, axis=0)
 
         # Summarize !!!!
-        summarized = summarize.all_metrics(all_oids)
+        summarized = summarize.all_metrics(all_oids, LOG_FILTER)
         summarized.columns = sar_col_name + summarized.columns
 
         # list of dataframes by image
@@ -340,9 +344,10 @@ for i, dg in enumerate(datagroups):
     out_path = str('{}{}_{}_{}.csv'.format(\
              CSV_DIR, names[i][0], names[i][1], names[i][2]))
 
+    fullsummary.to_csv(out_path)
+
     print('summarized ' + out_path)
 
-    fullsummary.to_csv(out_path)
 
 
 print('total runtime (s): ' + str(time.time() - start))
