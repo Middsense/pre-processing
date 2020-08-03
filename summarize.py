@@ -42,9 +42,9 @@ def quantiles(grouped, LOG_FILTER):
 
   # if using log noise reduction, exponentiate
   if LOG_FILTER:
-      iqr = np.exp(iqr - 1)
-      min = np.exp(min - 1)
-      max = np.exp(max - 1)
+      iqr = np.exp(iqr)
+      min = np.exp(min)
+      max = np.exp(max)
 
   # concatenate
   out = pd.concat([q1, q3, iqr, min, max], axis=1)
@@ -60,7 +60,7 @@ def all_metrics(df, LOG_FILTER):
   zero = zero_count(df).rename('zero_count')
 
   if LOG_FILTER:
-      df['amp'] = np.log(1 + df['amp'])
+      df['amp'] = np.log(df['amp'])
 
   # group by OID
   grouped = df.groupby('oid', as_index=True)
@@ -78,11 +78,11 @@ def all_metrics(df, LOG_FILTER):
 
   # if we're using log noise reduction
   if LOG_FILTER:
-      mean  = np.exp(mean - 1)
-      median = np.exp(median - 1)
-      std = np.exp(std - 1)
-      min = np.exp(min - 1)
-      max = np.exp(max - 1)
+      mean  = np.exp(mean)
+      median = np.exp(median)
+      std = np.exp(std)
+      min = np.exp(min)
+      max = np.exp(max)
 
   merge = pd.concat([mean, median, count, zero, quant, std, min, max], axis=1, join='outer')
   merge = merge.fillna(0) # fill 0s for zero_count column
