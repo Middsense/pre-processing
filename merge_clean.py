@@ -24,6 +24,25 @@ except ImportError:
     sys.exit('ERROR: cannot find GDAL/OGR modules')
 
 
+# dictionaries for assigning quality labels
+QUALITY = {'Interstate' : {range(0, 60) : 'Excellent',
+                           range(60, 100) : 'Good',
+                           range(100, 140) : 'Fair',
+                           range(140, 200) : 'Poor',
+                           range(200, 600) : 'Very poor'},
+           'Primary' : {range(0, 60) : 'Excellent',
+                        range(60, 100) : 'Good',
+                        range(100, 140) : 'Fair',
+                        range(140, 200) : 'Poor',
+                        range(200, 600) : 'Very poor'},
+           'Secondary' : {range(0, 95) : 'Excellent',
+                          range(95, 170) :  'Good',
+                          range(170, 220) : 'Fair',
+                          range(220, 280) : 'Poor',
+                          range(280, 600) : 'Very poor'}
+           }
+QUALITY_NUM = {'Very poor' : 0, 'Poor': 1, 'Fair' : 2, 'Good' : 3, 'Excellent' : 4}
+
 def join_roads(roads, data):
     """
     Join aggregated amplitude values to each road segment
@@ -50,11 +69,16 @@ def clean(df):
 
     # add CLOSEST mean/median
     df['closest_mean'] = df.apply(lambda row: row[str(row['closest_date'])+'_filtered_mean'], axis=1)
-    df['closest_median'] = df.apply(lambda row: row[str(row['closest_date'])+'_median'], axis=1)
     df['closest_std'] = df.apply(lambda row: row[str(row['closest_date'])+'_filtered_std'], axis=1)
+    df['closest_median'] = df.apply(lambda row: row[str(row['closest_date'])+'_median'], axis=1)
+    df['closest_iqr'] = df.apply(lambda row: row[str(row['closest_date'])+'_q3'] - row[str(row['closest_date'])+'_q1'], axis=1)
 
     # mark rows containing zero amplitude values (True/False contains zeros in at least one image)
     df['zeroamp'] = df.apply(lambda row: not np.any([row[c] for c in temp.columns if 'zero_count' in c]), axis=1)
+    # df = df.loc[df['zeroamp'] == True] # removes columns containing zero values
+
+    df['quality'] = df.apply(lambda row: next((v for k, v in QUALITY[row['VDOT_Sys_I']].items() if row['NIRI_Avg'] in k), 0), axis=1)
+    df['qualityINT'] = df['quality'].map(QUALITY_NUM)
 
     return df
 
