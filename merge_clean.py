@@ -3,7 +3,7 @@ merge_clean.py
 Abigail Stone
 
 Created: 7/6/2020
-Last updated: 7/24/2020
+Last updated: 8/5/2020
 
 Some data cleaning to remove outliers and null values; preparation for classification
 Inputs are speciific outputs from other middsense scripts
@@ -74,7 +74,7 @@ def clean(df):
     df['closest_iqr'] = df.apply(lambda row: row[str(row['closest_date'])+'_q3'] - row[str(row['closest_date'])+'_q1'], axis=1)
 
     # mark rows containing zero amplitude values (True/False contains zeros in at least one image)
-    df['zeroamp'] = df.apply(lambda row: not np.any([row[c] for c in temp.columns if 'zero_count' in c]), axis=1)
+    df['zeroamp'] = df.apply(lambda row: not np.any([row[c] for c in df.columns if 'zero_count' in c]), axis=1)
     # df = df.loc[df['zeroamp'] == True] # removes columns containing zero values
 
     df['quality'] = df.apply(lambda row: next((v for k, v in QUALITY[row['VDOT_Sys_I']].items() if row['NIRI_Avg'] in k), 0), axis=1)
