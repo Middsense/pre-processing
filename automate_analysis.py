@@ -1,6 +1,5 @@
 """
 automate_analysis.py
-Myles Stokowski
 07.03.2020
 
 all data available in shared drives
@@ -14,7 +13,6 @@ required inputs:
 
 usage:
 - move data files or edit input path constants to ensure script can find inputs
-- call generate_csv() or generate_all_csvs()
 """
 
 import os
@@ -28,9 +26,9 @@ from scipy import sparse
 import vector2raster as v2r
 import change_raster_resolution as crr
 import gen_sparse
-# import mask
 import summarize
 import merge_clean
+import pixelwise
 
 # TODO using these libraries should probably happen just in other files
 # called by automate_analysis
@@ -91,6 +89,7 @@ LANDCOVER_RASTER_DIR = './landcover-rasters/'
 CSV_DIR = './csv/'
 SPARSE_DIR = './sparse/'
 PKL_DIR = './pickles/'
+PIXEL_DIR = './pixel-level/'
 
 # files
 LANDCOVER_MERGED = LANDCOVER_RASTER_DIR + 'landcover-merged.tif'
@@ -293,6 +292,19 @@ def gen_all_sparse():
 # TODO could load into memory before looping, low priority
 
 """
+Outputting DataFrames at the pixel level rather than at the road level
+"""
+if os.path.exists(PIXEL_DIR):
+    print('skipping pixelwise .pkl creation')
+else:
+    print('creating pixelwise .pkls')
+    os.mkdir(PIXEL_DIR)
+    for img_dir in [SPARSE_DIR + 'raw/', SPARSE_DIR + 'despeckled/']:
+        img_stack = pixelwise.gen_img_stack(img_dir)
+        img_rd_stack = pixelwise.merge_img_rd_stack(img_stack, SPARSE_DIR + 'roads/')
+        img_rd_stack.to_pickle(PIXEL_DIR + img_dir.split('/')[-2] + '_pixels.pkl')
+        
+"""
 Summarizing!
 """
 
@@ -406,7 +418,6 @@ else:
         # save output as .pkl
         out_path = PKL_DIR + key + '.pkl'
         merged_datasets[key].to_pickle(path=out_path)
-
 
 
 print('total runtime (s): ' + str(time.time() - start))

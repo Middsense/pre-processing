@@ -20,7 +20,7 @@ from glob import glob
 
 def gen_img_stack(img_dir):
     
-    ref_sparse = sparse.load_npz(DATADIR + 'sparse/raw/20110829.npz')
+    ref_sparse = sparse.load_npz(img_dir + '/20110829.npz') #arbitrary sp matrix for row and col
     
     all_images_df = pd.DataFrame({'row': ref_sparse.row,                                  
                                   'col': ref_sparse.col})
