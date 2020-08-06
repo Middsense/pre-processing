@@ -176,55 +176,55 @@ else:
     ' --co "COMPRESS=DEFLATE" --type=Byte --co="NBITS=1" --NoDataValue=0 --format Gtiff --quiet'
     os.system(MASK_COMMAND)
 
-# 10 setup a landcover raster output folder
-if not os.path.exists(LANDCOVER_RASTER_DIR):
-    os.mkdir(LANDCOVER_RASTER_DIR)
-
-# 11 merge landcover raster tiles into one .tif
-if os.path.exists(LANDCOVER_MERGED):
-    print('skipping raster merge, {} already exists'.format(LANDCOVER_MERGED))
-else:
-    print('merging landcover raster tiles')
-    merge_tiles = glob(LANDCOVER_TILE_DIR + '*.tif')
-    WARP_COMMAND = 'gdalwarp -r near -co COMPRESS=DEFLATE --config '\
-        + 'GDAL_CACHEMAX 5000 -wm 5000 -cutline ' + FOOTPRINT + ' ' \
-        + ' '.join(merge_tiles) + ' ' + LANDCOVER_MERGED
-    os.system(WARP_COMMAND)
-
-# test of gdalwarp as a Python library function (rather than calling from cli with os)
-# unfortunately, runs slower (at least as configured) than os.system implementation
-# options = gdal.WarpOptions(cutlineDSName=FOOTPRINT, resampleAlg="near",\
-#     creationOptions=["COMPRESS=DEFLATE"])
-# gdal.Warp(LANDCOVER_RASTER_DIR + 'landcover-merged.tif', merge_tiles, options=options)
-
-# 12 reproject and change resolution
-if os.path.exists(LANDCOVER_REPROJECTED):
-    print('skipping reprojection, {} already exists'.format(LANDCOVER_REPROJECTED))
-else:
-    print("reprojecting landcover raster and matching resolution")
-    crr.convert_resolution(LANDCOVER_MERGED, LANDCOVER_REPROJECTED, RAW_SAR_DIR + REFTIF)
-
-# 13 reclassify to create road mask
-if os.path.exists(LANDCOVER_MASKED):
-    print('skipping reclassification, {} already exists'.format(LANDCOVER_MASKED))
-else:
-    print('reclassifiyng landcover')
-    reclass_command = 'gdal_calc.py -A ' + LANDCOVER_REPROJECTED + ' --outfile='\
-        + LANDCOVER_MASKED + ' --calc="logical_or(A==21, A==22)" ' \
-        + '--NoDataValue=-9999 --co "COMPRESS=DEFLATE" --type=Float32 --format Gtiff'
-    os.system(reclass_command)
-
-# 20 mask OBJECT_ID (OID) rasters with landcover raster
-for road_raster in glob(ROAD_RASTER_DIR + '*within_footprint.tif'):
-    out = road_raster[:-4] + '_landcovermasked.tif'
-    if os.path.exists(out):
-        print('skipping mask, {} already exists'.format(out))
-    else:
-        print('creating masked road raster {}'.format(out))
-        #mask.mask(road_raster, LANDCOVER_MASKED, out)
-        MASK_COMMAND = 'gdal_calc.py -A {} -B {} --calc="-9999*(B==0) + A*(B==1)" --outfile {}'.format(road_raster, LANDCOVER_MASKED, out) +\
-        ' --co "COMPRESS=DEFLATE" --type=Float32 --NoDataValue=-9999 --format Gtiff --quiet'
-        os.system(MASK_COMMAND)
+# # 10 setup a landcover raster output folder
+# if not os.path.exists(LANDCOVER_RASTER_DIR):
+#     os.mkdir(LANDCOVER_RASTER_DIR)
+#
+# # 11 merge landcover raster tiles into one .tif
+# if os.path.exists(LANDCOVER_MERGED):
+#     print('skipping raster merge, {} already exists'.format(LANDCOVER_MERGED))
+# else:
+#     print('merging landcover raster tiles')
+#     merge_tiles = glob(LANDCOVER_TILE_DIR + '*.tif')
+#     WARP_COMMAND = 'gdalwarp -r near -co COMPRESS=DEFLATE --config '\
+#         + 'GDAL_CACHEMAX 5000 -wm 5000 -cutline ' + FOOTPRINT + ' ' \
+#         + ' '.join(merge_tiles) + ' ' + LANDCOVER_MERGED
+#     os.system(WARP_COMMAND)
+#
+# # test of gdalwarp as a Python library function (rather than calling from cli with os)
+# # unfortunately, runs slower (at least as configured) than os.system implementation
+# # options = gdal.WarpOptions(cutlineDSName=FOOTPRINT, resampleAlg="near",\
+# #     creationOptions=["COMPRESS=DEFLATE"])
+# # gdal.Warp(LANDCOVER_RASTER_DIR + 'landcover-merged.tif', merge_tiles, options=options)
+#
+# # 12 reproject and change resolution
+# if os.path.exists(LANDCOVER_REPROJECTED):
+#     print('skipping reprojection, {} already exists'.format(LANDCOVER_REPROJECTED))
+# else:
+#     print("reprojecting landcover raster and matching resolution")
+#     crr.convert_resolution(LANDCOVER_MERGED, LANDCOVER_REPROJECTED, RAW_SAR_DIR + REFTIF)
+#
+# # 13 reclassify to create road mask
+# if os.path.exists(LANDCOVER_MASKED):
+#     print('skipping reclassification, {} already exists'.format(LANDCOVER_MASKED))
+# else:
+#     print('reclassifiyng landcover')
+#     reclass_command = 'gdal_calc.py -A ' + LANDCOVER_REPROJECTED + ' --outfile='\
+#         + LANDCOVER_MASKED + ' --calc="logical_or(A==21, A==22)" ' \
+#         + '--NoDataValue=-9999 --co "COMPRESS=DEFLATE" --type=Float32 --format Gtiff'
+#     os.system(reclass_command)
+#
+# # 20 mask OBJECT_ID (OID) rasters with landcover raster
+# for road_raster in glob(ROAD_RASTER_DIR + '*within_footprint.tif'):
+#     out = road_raster[:-4] + '_landcovermasked.tif'
+#     if os.path.exists(out):
+#         print('skipping mask, {} already exists'.format(out))
+#     else:
+#         print('creating masked road raster {}'.format(out))
+#         #mask.mask(road_raster, LANDCOVER_MASKED, out)
+#         MASK_COMMAND = 'gdal_calc.py -A {} -B {} --calc="-9999*(B==0) + A*(B==1)" --outfile {}'.format(road_raster, LANDCOVER_MASKED, out) +\
+#         ' --co "COMPRESS=DEFLATE" --type=Float32 --NoDataValue=-9999 --format Gtiff --quiet'
+#         os.system(MASK_COMMAND)
 
 
 ##############################################################################
@@ -387,17 +387,15 @@ else:
     print("merging...")
 
     merged_datasets = {}
+
     for key in sar_datasets:
+        # join and merge
         joined = merge_clean.join_roads(sar_datasets[key], roads)
         merged_datasets[key] = merge_clean.clean(joined)
 
-
-    # save output as .pkl
-    for key in merged_datasets:
+        # save output as .pkl
         out_path = PKL_DIR + key + '.pkl'
         merged_datasets[key].to_pickle(path=out_path)
-
-
 
 
 

@@ -18,6 +18,8 @@ Mostly from the Pavement_Quality_V2 notebook
 import argparse
 import numpy as np
 import pandas as pd
+from datetime import timedelta
+
 try:
     from osgeo import gdal
 except ImportError:
@@ -42,6 +44,31 @@ QUALITY = {'Interstate' : {range(0, 60) : 'Excellent',
                           range(280, 600) : 'Very poor'}
            }
 QUALITY_NUM = {'Very poor' : 0, 'Poor': 1, 'Fair' : 2, 'Good' : 3, 'Excellent' : 4}
+
+def polyfit_slope(row, sar_dates, max_diff):
+    """
+    Returns slope of best fit line across SAR acquisition dates within max_diff days
+    """
+
+    iri_date = row['Date_Teste']
+
+    iri_datetime = pd.to_datetime(iri_date, format='%Y%m%d')
+    sar_datetimes = pd.to_datetime(sar_dates, format='%Y%m%d')
+
+    max_diff = timedelta(days=max_diff)
+    closest_dates = pd.DataFrame({'diff': iri_datetime - sar_datetimes, 'sar_dates':sar_dates, 'sar_datetime':sar_datetimes})
+    closest_dates = closest_dates[abs(closest_dates['diff']) < max_diff]
+
+    if closest_dates.empty:
+      return np.NaN
+
+    else:
+      closest_dates['closest_mean'] = closest_dates.apply(lambda row2: row[str(row2['sar_dates'])+'_filtered_mean'], axis=1)
+
+      # best fit line
+      m, b = np.polyfit(closest_dates['diff'].dt.days, closest_dates['closest_mean'], 1)
+
+      return m.astype(np.float32)
 
 def join_roads(roads, data):
     """
@@ -77,8 +104,12 @@ def clean(df):
     df['zeroamp'] = df.apply(lambda row: not np.any([row[c] for c in df.columns if 'zero_count' in c]), axis=1)
     # df = df.loc[df['zeroamp'] == True] # removes columns containing zero values
 
+    # add road quality label based on IRI categories (and int version to make classification easier)
     df['quality'] = df.apply(lambda row: next((v for k, v in QUALITY[row['VDOT_Sys_I']].items() if row['NIRI_Avg'] in k), 0), axis=1)
     df['qualityINT'] = df['quality'].map(QUALITY_NUM)
+
+    # add polyfit slope of closest_mean values within 45 days
+    df['pf_slope'] = df.apply(polyfit_slope, args=(SAR_DATES, 45), axis=1)
 
     return df
 
