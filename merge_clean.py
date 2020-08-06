@@ -63,7 +63,7 @@ def polyfit_slope(row, sar_dates, max_diff):
       return np.NaN
 
     else:
-      closest_dates['closest_mean'] = closest_dates.apply(lambda row2: row[str(row2['sar_dates'])+'_filtered_mean'], axis=1)
+      closest_dates['closest_mean'] = closest_dates.apply(lambda row2: row[str(row2['sar_dates'])+'_mean'], axis=1)
 
       # best fit line
       m, b = np.polyfit(closest_dates['diff'].dt.days, closest_dates['closest_mean'], 1)
