@@ -1,9 +1,8 @@
 """
 merge_clean.py
-Abigail Stone
 
 Created: 7/6/2020
-Last updated: 8/5/2020
+Last updated: 8/7/2020
 
 Some data cleaning to remove outliers and null values; preparation for classification
 Inputs are speciific outputs from other middsense scripts
@@ -19,11 +18,6 @@ import argparse
 import numpy as np
 import pandas as pd
 from datetime import timedelta
-
-try:
-    from osgeo import gdal
-except ImportError:
-    sys.exit('ERROR: cannot find GDAL/OGR modules')
 
 
 # dictionaries for assigning quality labels
@@ -45,9 +39,10 @@ QUALITY = {'Interstate' : {range(0, 60) : 'Excellent',
            }
 QUALITY_NUM = {'Very poor' : 0, 'Poor': 1, 'Fair' : 2, 'Good' : 3, 'Excellent' : 4}
 
-def polyfit_slope(row, sar_dates, max_diff):
+
+def n_closest(row, sar_dates, max_diff):
     """
-    Returns slope of best fit line across SAR acquisition dates within max_diff days
+    called in df.apply, returns Gaussian-weighted mean of averages within max_diff days
     """
 
     iri_date = row['Date_Teste']
@@ -60,15 +55,26 @@ def polyfit_slope(row, sar_dates, max_diff):
     closest_dates = closest_dates[abs(closest_dates['diff']) < max_diff]
 
     if closest_dates.empty:
-      return np.NaN
+
+        return pd.Series([np.NaN, np.NaN, np.NaN])
 
     else:
-      closest_dates['closest_mean'] = closest_dates.apply(lambda row2: row[str(row2['sar_dates'])+'_mean'], axis=1)
+        closest_dates['closest_mean'] = closest_dates.apply(lambda row2: row[str(row2['sar_dates'])+'_mean'], axis=1)
+        closest_dates['closest_std'] = closest_dates.apply(lambda row2: row[str(row2['sar_dates'])+'_std'], axis=1)
 
-      # best fit line
-      m, b = np.polyfit(closest_dates['diff'].dt.days, closest_dates['closest_mean'], 1)
+        # parameters for Gaussian
+        mu, sig = 0, 10
+        closest_dates['weight'] = np.exp(-1*np.power(closest_dates['diff'].dt.days - mu, 2.) / (2 * np.power(sig, 2.)))
 
-      return m.astype(np.float32)
+        avg = np.average(closest_dates['closest_mean'], weights=closest_dates['weight'])
+        std = np.average(closest_dates['closest_std'], weights=closest_dates['weight'])
+
+        # polyfit slope
+        m, b = np.polyfit(closest_dates['diff'].dt.days, closest_dates['closest_mean'], 1)
+        slope = m.astype(np.float32)
+
+        return pd.Series([slope, avg, std])
+
 
 def join_roads(roads, data):
     """
@@ -102,14 +108,15 @@ def clean(df):
 
     # mark rows containing zero amplitude values (True/False contains zeros in at least one image)
     df['zeroamp'] = df.apply(lambda row: not np.any([row[c] for c in df.columns if 'zero_count' in c]), axis=1)
-    # df = df.loc[df['zeroamp'] == True] # removes columns containing zero values
+    df = df.loc[df['zeroamp'] == True] # removes columns containing zero values
 
     # add road quality label based on IRI categories (and int version to make classification easier)
     df['quality'] = df.apply(lambda row: next((v for k, v in QUALITY[row['VDOT_Sys_I']].items() if row['NIRI_Avg'] in k), 0), axis=1)
     df['qualityINT'] = df['quality'].map(QUALITY_NUM)
 
     # add polyfit slope of closest_mean values within 45 days
-    df['pf_slope'] = df.apply(polyfit_slope, args=(SAR_DATES, 45), axis=1)
+    # add gaussian weighted average and stddev of closest_mean values within 45 days
+    df[['pf_slope', 'gauss_closest_mean', 'gauss_closest_std']] = df.apply(n_closest, args=(SAR_DATES, 45), axis=1)
 
     return df
 
