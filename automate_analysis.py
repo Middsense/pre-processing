@@ -347,7 +347,7 @@ for i, dg in enumerate(datagroups):
 
                 # mask SAR image to only pixels where there was an OID road segment that year
                 img_masked = img.multiply(rd > 0).tocoo()
-                rd_masked = rd.multiply((img_masked > 0) + (img_masked == -1)).tocoo()
+                rd_masked = rd.multiply((img_masked > 0) + (img_masked == -1)).tocoo() # addition works as logical OR
 
                 # Check that the masked files are the same size
                 if img_masked.size != rd_masked.size:
