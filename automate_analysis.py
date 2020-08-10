@@ -307,60 +307,80 @@ else:
 """
 Summarizing!
 """
+# for each of the SAR datasets (raw/despeck)
+for sar in glob(PIXEL_DIR + '*'):
 
-sar_type = ['raw/', 'despeckled/']
-buffer_type = ['All_Buf12_10_10_within_footprint', 'All_within_footprint']
-mask_type = ['_landcovermasked.npz', '.npz']
+    df = pd.read_pickle(sar)
+    sar_cols = df.iloc[:,-67:]
+    
+    # for each of the road datasets (buffered/not buffered, masked/unmasked)
+    for roads in ['centerline_unmasked', 'centerline_masked', 'buffered_masked', 'buffered_unmasked']:
 
-# list of possible combinations of data sources (raw/despeck, buffered/not buffered, masked/unmasked)
-datagroups = np.array(np.meshgrid(sar_type, buffer_type, mask_type)).T.reshape(-1, 3)
-names = np.array(np.meshgrid(['raw', 'despeck'], ['buffered', 'centerline'], ['masked', 'unmasked'])).T.reshape(-1, 3)
+        oid_cols = df.filter(like=roads)
+        concat_list = []
 
+        for year in oid_cols:
 
-print('Summarizing...')
-# 31 Generates a .csv file for each combination of data inputs
-for i, dg in enumerate(datagroups):
+            year_df = pd.concat([oid_cols[year].rename('oid'), sar_cols], axis=1)
+            concat_list.append(year_df.loc[year_df['oid'].isna() == False])
 
-    out_path = str('{}{}_{}_{}.csv'.format(CSV_DIR, names[i][0], names[i][1], names[i][2]))
+        all_oids = pd.concat(concat_list, axis=0)
+        
+        summarize.all_metrics(all_oids)
 
-    # check if this summary .csv already exists
-    if os.path.exists(out_path):
-        print('skipping summary of {}, file already exists'.format(out_path))
+# sar_type = ['raw/', 'despeckled/']
+# buffer_type = ['All_Buf12_10_10_within_footprint', 'All_within_footprint']
+# mask_type = ['_landcovermasked.npz', '.npz']
 
-    else:
-        print('converting ' + ROAD_GDB + ' to shapefiles and csv')
-
-        # For each .csv, we summarize each image over the road files for each year:
-        summarylist = []
-
-        # Each image in selected stack (raw/despeck)
-        for img_path in glob(SPARSE_DIR + dg[0] + '*'):
-
-            img = sparse.load_npz(img_path)
-
-            concat_list = []
-
-            # Each year of road segments matching the road type we want
-            for rd_path in glob(SPARSE_DIR + 'roads/*' + dg[1] + dg[2]):
-
-                rd = sparse.load_npz(rd_path)
-
-                # mask SAR image to only pixels where there was an OID road segment that year
-                img_masked = img.multiply(rd > 0).tocoo()
-                rd_masked = rd.multiply((img_masked > 0) + (img_masked == -1)).tocoo() # addition works as logical OR
-
-                # Check that the masked files are the same size
-                if img_masked.size != rd_masked.size:
-                    print('error, sparse matrix sizes dont match!!!')
-
-                # Convert to DataFrame
-                sar_col_name = img_path.split('/')[-1][0:8] + '_'
+# # list of possible combinations of data sources (raw/despeck, buffered/not buffered, masked/unmasked)
+# datagroups = np.array(np.meshgrid(sar_type, buffer_type, mask_type)).T.reshape(-1, 3)
+# names = np.array(np.meshgrid(['raw', 'despeck'], ['buffered', 'centerline'], ['masked', 'unmasked'])).T.reshape(-1, 3)
 
 
-                pixels = pd.DataFrame({
-                    'oid':rd_masked.data,
-                    'amp': img_masked.data
-                })
+# print('Summarizing...')
+# # 31 Generates a .csv file for each combination of data inputs
+# for i, dg in enumerate(datagroups):
+
+#     out_path = str('{}{}_{}_{}.csv'.format(CSV_DIR, names[i][0], names[i][1], names[i][2]))
+
+#     # check if this summary .csv already exists
+#     if os.path.exists(out_path):
+#         print('skipping summary of {}, file already exists'.format(out_path))
+
+#     else:
+#         print('converting ' + ROAD_GDB + ' to shapefiles and csv')
+
+#         # For each .csv, we summarize each image over the road files for each year:
+#         summarylist = []
+
+#         # Each image in selected stack (raw/despeck)
+#         for img_path in glob(SPARSE_DIR + dg[0] + '*'):
+
+#             img = sparse.load_npz(img_path)
+
+#             concat_list = []
+
+#             # Each year of road segments matching the road type we want
+#             for rd_path in glob(SPARSE_DIR + 'roads/*' + dg[1] + dg[2]):
+
+#                 rd = sparse.load_npz(rd_path)
+
+#                 # mask SAR image to only pixels where there was an OID road segment that year
+#                 img_masked = img.multiply(rd > 0).tocoo()
+#                 rd_masked = rd.multiply((img_masked > 0) + (img_masked == -1)).tocoo() # addition works as logical OR
+
+#                 # Check that the masked files are the same size
+#                 if img_masked.size != rd_masked.size:
+#                     print('error, sparse matrix sizes dont match!!!')
+
+#                 # Convert to DataFrame
+#                 sar_col_name = img_path.split('/')[-1][0:8] + '_'
+
+
+#                 pixels = pd.DataFrame({
+#                     'oid':rd_masked.data,
+#                     'amp': img_masked.data
+#                 })
 
                 pixels = pixels.replace(-1, 0)
 
