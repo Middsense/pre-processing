@@ -63,7 +63,7 @@ def n_closest(row, sar_dates, max_diff):
         closest_dates['closest_std'] = closest_dates.apply(lambda row2: row[str(row2['sar_dates'])+'_std'], axis=1)
 
         # parameters for Gaussian
-        mu, sig = 0, 10
+        mu, sig = 0, 30
         closest_dates['weight'] = np.exp(-1*np.power(closest_dates['diff'].dt.days - mu, 2.) / (2 * np.power(sig, 2.)))
 
         avg = np.average(closest_dates['closest_mean'], weights=closest_dates['weight'])
