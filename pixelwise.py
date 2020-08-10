@@ -41,8 +41,8 @@ def gen_img_stack(img_dir):
     return all_images_df
 
 
-raw_pixels = pd.read_pickle('raw_pixels.pkl')
-img_stack = raw_pixels.iloc[:,22:]
+# raw_pixels = pd.read_pickle('raw_pixels.pkl')
+# img_stack = raw_pixels.iloc[:,22:]
 
 def log_img(img_stack):
     """
