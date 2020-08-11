@@ -27,7 +27,8 @@ def quantiles(grouped):
   min = q1 - iqr_prod
   max = q3 + iqr_prod
 
-  q1, q3, iqr, min, max = q1.add_suffix('_q1'), q3.add_suffix('_q3'), iqr.add_suffix('_iqr'), min.add_suffix('_min'), max.add_suffix('_max')
+  q1, q3, iqr = q1.add_suffix('_q1'), q3.add_suffix('_q3'), iqr.add_suffix('_iqr')
+  min, max = min.add_suffix('_bmin'), max.add_suffix('_bmax')
 
   # concatenate
   out = pd.concat([q1, q3, iqr, min, max], axis=1)
@@ -38,18 +39,14 @@ def all_metrics(df):
   """
   compute all summaries
   """
-  zero = zero_count(df).rename('zero_count')
 
   # group by OID
   grouped = df.groupby('oid', as_index=True)
 
-  # quantiles
-  # quant = quantiles(grouped)
-
   # built in pandas functions
   # count
   count = grouped.count().add_suffix('_count')
-  zerocount = df1.set_index('oid').eq(0).groupby('oid').sum().add_suffix('_zerocount')
+  zerocount = df.set_index('oid').eq(0).groupby('oid').sum().add_suffix('_zerocount')
 
   # mean, median, stddev, min, max (not boxplot min/max)
   mean = grouped.mean().add_suffix('_mean')
@@ -58,31 +55,20 @@ def all_metrics(df):
   min = grouped.min().add_suffix('_min')
   max = grouped.max().add_suffix('_max')
 
-
-
   # merge = pd.concat([mean, median, count, zero, quant, std, min, max], axis=1, join='outer')
   merge = pd.concat([mean, median, count, std, min, max], axis=1, join='outer')
   merge = merge.fillna(0) # fill 0s for zero_count column
 
   # quantiles
   quant = quantiles(grouped)
-  merge = merge.concat(quant, axis=1, join='outer')
 
-  # # join the pixels with the road-level stats
-  # joined = df.join(merge, on='oid', how='left')
-  #
-  # # filter the pixels within the min_boxplot and max_boxplot values for that rd segment
-  # filtered = joined.loc[joined['amp'].ge(joined['min_boxplot'])\
-  #                     & joined['amp'].le(joined['max_boxplot'])]
-  #
-  # # calculate std and mean on the filtered pixels
-  # filtered_mean = filtered.groupby('oid')['amp'].mean().rename('filtered_mean')
-  # filtered_std = filtered.groupby('oid')['amp'].std().rename('filtered_std')
-  #
-  # # add the filtered stats, drop the unecessary boxplot stats (which are products
-  # # of q1 and q3 and can be regenerated later)
-  # merge = merge.drop(columns={'iqr', 'min_boxplot', 'max_boxplot'})
-  # merge = pd.concat([merge, filtered_mean, filtered_std], axis=1, join='outer')
+  # Mean filtering
+  maxs = quant.filter(like='bmax')
+  mins = quant.filter(like='bmins')
 
+  merge = pd.concat([merge, quant, filtered_mean], axis=1, join='outer')
+
+  # sort columns
+  merge = merge.reindex(sorted(merge.columns), axis=1)
 
   return merge

@@ -26,8 +26,8 @@ from scipy import sparse
 import vector2raster as v2r
 import change_raster_resolution as crr
 import gen_sparse
-import summarize
-import merge_clean
+import pixel2road
+import roadstats
 import pixelwise
 
 # TODO using these libraries should probably happen just in other files
@@ -46,7 +46,7 @@ start = time.time()
 OPTIONS
 """
 # compute statistics with log: exp(average(log(data)))
-LOG_FILTER = False
+LOG_FILTER = False # not using this anymore !
 
 """
 WORKING DIRECTORY
@@ -303,7 +303,7 @@ else:
         img_stack = pixelwise.gen_img_stack(img_dir)
         img_rd_stack = pixelwise.merge_img_rd_stack(img_stack, SPARSE_DIR + 'roads/')
         img_rd_stack.to_pickle(PIXEL_DIR + img_dir.split('/')[-2] + '_pixels.pkl')
-        
+
 """
 Summarizing!
 """
@@ -312,7 +312,7 @@ for sar in glob(PIXEL_DIR + '*'):
 
     df = pd.read_pickle(sar)
     sar_cols = df.iloc[:,-67:]
-    
+
     # for each of the road datasets (buffered/not buffered, masked/unmasked)
     for roads in ['centerline_unmasked', 'centerline_masked', 'buffered_masked', 'buffered_unmasked']:
 
@@ -325,8 +325,8 @@ for sar in glob(PIXEL_DIR + '*'):
             concat_list.append(year_df.loc[year_df['oid'].isna() == False])
 
         all_oids = pd.concat(concat_list, axis=0)
-        
-        summarize.all_metrics(all_oids)
+
+        pixel2road.all_metrics(all_oids)
 
 # sar_type = ['raw/', 'despeckled/']
 # buffer_type = ['All_Buf12_10_10_within_footprint', 'All_within_footprint']
@@ -391,7 +391,7 @@ for sar in glob(PIXEL_DIR + '*'):
             all_oids = pd.concat(concat_list, axis=0)
 
             # Summarize !!!!
-            summarized = summarize.all_metrics(all_oids, LOG_FILTER)
+            summarized = pixel2road.all_metrics(all_oids)
             summarized.columns = sar_col_name + summarized.columns
 
             # list of dataframes by image
@@ -432,8 +432,8 @@ else:
 
     for key in sar_datasets:
         # join and merge
-        joined = merge_clean.join_roads(sar_datasets[key], roads)
-        merged_datasets[key] = merge_clean.clean(joined)
+        joined = roadstats.join_roads(sar_datasets[key], roads)
+        merged_datasets[key] = roadstats.clean(joined)
 
         # save output as .pkl
         out_path = PKL_DIR + key + '.pkl'
