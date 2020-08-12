@@ -46,7 +46,10 @@ start = time.time()
 OPTIONS
 """
 # compute statistics with log: exp(average(log(data)))
-LOG_FILTER = False # not using this anymore !
+LOG_FILTER = False
+
+# computer statistics with mean normalization: pixel = pixel - temporal_mean(pixel)
+MEAN_NORMALIZE = True
 
 """
 WORKING DIRECTORY
@@ -83,19 +86,21 @@ OUTPUTS
 (these will all be created as the script runs)
 """
 # directories
-ROAD_SHP_DIR = './road-shapefiles/'
-ROAD_RASTER_DIR = './road-rasters/'
-LANDCOVER_RASTER_DIR = './landcover-rasters/'
-CSV_DIR = './csv/'
+ROAD_SHP_DIR = './road_shapefiles/'
+ROAD_RASTER_DIR = './road_rasters/'
+LANDCOVER_RASTER_DIR = './landcover_rasters/'
+# CSV_DIR = './csv/'
 SPARSE_DIR = './sparse/'
-PKL_DIR = './pickles/'
-PIXEL_DIR = './pixel-level/'
+PIXEL_LEVEL_DIR = './pixel_level/'
+ROAD_LEVEL_DIR = './road_level/'
+MERGED_DIR = './road_level_merged/'
 
 # files
-LANDCOVER_MERGED = LANDCOVER_RASTER_DIR + 'landcover-merged.tif'
-LANDCOVER_REPROJECTED = LANDCOVER_RASTER_DIR + 'landcover-merged-reprojected.tif'
-LANDCOVER_MASKED = LANDCOVER_RASTER_DIR + 'landcover-merged-reprojected-masked.tif'
-ROAD_CSV = CSV_DIR + 'all_road_features.csv'
+LANDCOVER_MERGED = LANDCOVER_RASTER_DIR + 'landcover_merged.tif'
+LANDCOVER_REPROJECTED = LANDCOVER_RASTER_DIR + 'landcover_merged_reprojected.tif'
+LANDCOVER_MASKED = LANDCOVER_RASTER_DIR + 'landcover_merged_reprojected_masked.tif'
+# ROAD_CSV = CSV_DIR + 'all_road_features.csv'
+ROAD_PKL = ROAD_LEVEL_DIR + 'all_road_features.pkl'
 ALL_ROADS_SHP = ROAD_SHP_DIR + 'all_roads_within_footprint.shp'
 
 
@@ -127,9 +132,9 @@ write a single .csv with all the road features (all years)
 if os.path.exists(ROAD_SHP_DIR):
     print('skipping .gdb to .shp conversion, {} directory already exists'.format(ROAD_SHP_DIR))
 else:
-    print('converting ' + ROAD_GDB + ' to shapefiles and csv')
+    print('converting ' + ROAD_GDB + ' to shapefiles and .pkl')
     os.mkdir(ROAD_SHP_DIR)
-    os.mkdir(CSV_DIR)
+    os.mkdir(ROAD_LEVEL_DIR)
     footprint = gpd.read_file(filename=FOOTPRINT)
 
     out_gdfs = []
@@ -153,8 +158,7 @@ else:
     # merge all features from all years
     all_road_features = pd.concat(out_gdfs)
     all_road_features.to_file(ROAD_SHP_DIR + 'all_roads_within_footprint.shp')
-    all_road_features.drop(columns='geometry').to_csv(ROAD_CSV) # IRI .csv
-
+    all_road_features.drop(columns='geometry').to_pickle(ROAD_PKL) # IRI .pkl
 
 # 01 rasterize .shp files, burn in OID value
 if os.path.exists(ROAD_RASTER_DIR):
@@ -193,7 +197,7 @@ if os.path.exists(LANDCOVER_MERGED):
 else:
     print('merging landcover raster tiles')
     merge_tiles = glob(LANDCOVER_TILE_DIR + '*.tif')
-    WARP_COMMAND = 'gdalwarp -r near -co COMPRESS=DEFLATE --config '\
+    WARP_COMMAND = 'gdalwarp -q -r near -co COMPRESS=DEFLATE --config '\
         + 'GDAL_CACHEMAX 5000 -wm 5000 -cutline ' + FOOTPRINT + ' ' \
         + ' '.join(merge_tiles) + ' ' + LANDCOVER_MERGED
     os.system(WARP_COMMAND)
@@ -208,7 +212,7 @@ else:
 if os.path.exists(LANDCOVER_REPROJECTED):
     print('skipping reprojection, {} already exists'.format(LANDCOVER_REPROJECTED))
 else:
-    print("reprojecting landcover raster and matching resolution")
+    print("reprojecting landcover raster and resmapling to match SAR resolution")
     crr.convert_resolution(LANDCOVER_MERGED, LANDCOVER_REPROJECTED, RAW_SAR_DIR + REFTIF)
 
 # 13 reclassify to create road mask
@@ -216,7 +220,7 @@ if os.path.exists(LANDCOVER_MASKED):
     print('skipping reclassification, {} already exists'.format(LANDCOVER_MASKED))
 else:
     print('reclassifiyng landcover')
-    reclass_command = 'gdal_calc.py -A ' + LANDCOVER_REPROJECTED + ' --outfile='\
+    reclass_command = 'gdal_calc.py --quiet -A ' + LANDCOVER_REPROJECTED + ' --outfile='\
         + LANDCOVER_MASKED + ' --calc="logical_or(A==21, A==22)" ' \
         + '--NoDataValue=-9999 --co "COMPRESS=DEFLATE" --type=Float32 --format Gtiff'
     os.system(reclass_command)
@@ -228,7 +232,6 @@ for road_raster in glob(ROAD_RASTER_DIR + '*within_footprint.tif'):
         print('skipping mask, {} already exists'.format(out))
     else:
         print('creating masked road raster {}'.format(out))
-        #mask.mask(road_raster, LANDCOVER_MASKED, out)
         MASK_COMMAND = 'gdal_calc.py -A {} -B {} --calc="-9999*(B==0) + A*(B==1)" --outfile {}'.format(road_raster, LANDCOVER_MASKED, out) +\
         ' --co "COMPRESS=DEFLATE" --type=Float32 --NoDataValue=-9999 --format Gtiff --quiet'
         os.system(MASK_COMMAND)
@@ -261,7 +264,7 @@ def gen_all_sparse():
         print('generating sparse matrices and saving to .npz')
         os.mkdir(SPARSE_DIR)
         os.mkdir(SPARSE_DIR+'raw/')
-        os.mkdir(SPARSE_DIR+'despeckled/')
+        os.mkdir(SPARSE_DIR+'despeck/')
         os.mkdir(SPARSE_DIR+'roads/')
 
         # dense roads to mask each SAR image during conversion to sparse matrix (output is numpy array)
@@ -276,8 +279,8 @@ def gen_all_sparse():
         # Despeckled images
         print('generating despeckled SAR sparse matrices (hang in there)')
         despeck_imgs = glob(DESPECK_SAR_DIR+'*.tif')
-        sparse_despeck = gen_sparse.gen_all_sparse_images(despeck_imgs, all_roads_dense) #dict of 67 sparse matrices
-        save_sparse(sparse_despeck, SPARSE_DIR+'despeckled/')
+        sparse_despeck = gen_sparse.gen_all_sparse_images(despeck_imgs, all_roads_dense) # dict of 67 sparse matrices
+        save_sparse(sparse_despeck, SPARSE_DIR+'despeck/')
 
         # sparse matrices for single year road rasters
         # this should generate 5 years * 2 (buffered/centerlines) * 2 (landcovermasked/notmasked) = 20 sparse matrices
@@ -289,55 +292,64 @@ def gen_all_sparse():
 # Generate and save all sparse matrices: raw, despeck, and roads
 gen_all_sparse()
 
-
 """
 Output DataFrames at the pixel level rather than at the road level
+Here, we are copying the data from the sparse matrices into an easier format
+for performing operations
 """
-if os.path.exists(PIXEL_DIR):
+if os.path.exists(PIXEL_LEVEL_DIR):
     print('skipping pixelwise .pkl creation')
 else:
     print('creating pixelwise .pkls')
-    os.mkdir(PIXEL_DIR)
-    for img_dir in [SPARSE_DIR + 'raw/', SPARSE_DIR + 'despeckled/']:
+    os.mkdir(PIXEL_LEVEL_DIR)
+    for img_dir in [SPARSE_DIR + 'raw/', SPARSE_DIR + 'despeck/']:
         img_stack = pixelwise.gen_img_stack(img_dir)
         img_rd_stack = pixelwise.merge_img_rd_stack(img_stack, SPARSE_DIR + 'roads/')
-        img_rd_stack.to_pickle(PIXEL_DIR + img_dir.split('/')[-2] + '_pixels.pkl')
+        img_rd_stack.to_pickle(PIXEL_LEVEL_DIR + img_dir.split('/')[-2] + '_pixels.pkl')
+        print(PIXEL_LEVEL_DIR + img_dir.split('/')[-2] + '_pixels.pkl')
 
 """
 Calculate metrics on each group of pixels within a road segment
 Pixel level data --> aggregated road level data
 """
-# for each of the SAR datasets (raw/despeck)
-for pixel_path in glob(PIXEL_DIR + '*'):
+# if the road level folder contains more than just all_road_features.pkl
+# (SAR road level data also)
+if len(os.listdir(ROAD_LEVEL_DIR)) > 1:
+    print('skipping road level .pkl creation')
+else:
+    print('generating road level .pkls')
 
-    df = pd.read_pickle(pixel_path)
-    
-    # select only the SAR amplitude columns
-    sar_cols = df.iloc[:,-67:]
+    # for each of the SAR datasets (raw/despeck)
+    for pixel_path in glob(PIXEL_LEVEL_DIR + '*'):
 
-    # for each of the road datasets (buffered/not buffered, masked/unmasked)
-    for road_type in ['centerline_unmasked', 'centerline_masked', 'buffered_masked', 'buffered_unmasked']:
+        df = pd.read_pickle(pixel_path)
 
-        # select only the OID columns for given road dataset
-        oid_cols = df.filter(like=road_type)
-        
-        concat_list = []
+        # select only the SAR amplitude columns
+        sar_cols = df.iloc[:,-67:]
 
-        for year in oid_cols:
-                
-            year_df = pd.concat([oid_cols[year].rename('oid'), sar_cols], axis=1).set_index('oid')
-            concat_list.append(year_df.loc[year_df.index.isna() == False])
+        # for each of the road datasets (buffered/not buffered, masked/unmasked)
+        for road_type in ['centerline_unmasked', 'centerline_masked', 'buffered_masked', 'buffered_unmasked']:
 
-        # concat the rows for each year of data, and 
-        # sort by OID (axis=0) and SAR acquisition date (axis=1)
-        all_oids = pd.concat(concat_list, axis=0).sort_index(axis=0).sort_index(axis=1)
+            # select only the OID columns for given road dataset
+            oid_cols = df.filter(like=road_type)
 
-        summarized = pixel2road.all_metrics(all_oids)
-        
-        out_path = pixel_path.split('/')[-1][:-11] + '_' + road_type + '.pkl'
-        pd.to_pickle(summarized, out_path)
+            concat_list = []
 
-        print('summarized ' + out_path)
+            for year in oid_cols:
+
+                year_df = pd.concat([oid_cols[year].rename('oid'), sar_cols], axis=1).set_index('oid')
+                concat_list.append(year_df.loc[year_df.index.isna() == False])
+
+            # concat the rows for each year of data, and
+            # sort by OID (axis=0) and SAR acquisition date (axis=1)
+            all_oids = pd.concat(concat_list, axis=0).sort_index(axis=0).sort_index(axis=1)
+
+            summarized = pixel2road.all_metrics(all_oids, LOG_FILTER, MEAN_NORMALIZE)
+
+            out_path = pixel_path.split('/')[-1][:-11] + '_' + road_type + '.pkl'
+            pd.to_pickle(summarized, ROAD_LEVEL_DIR + out_path)
+
+            print('summarized ' + out_path)
 
 """
 Road level data merging, cleaning and calculating additional metrics/features
@@ -346,35 +358,27 @@ Road level data merging, cleaning and calculating additional metrics/features
 - calculate additional metrics like rate of change in mean amplitude across images
 """
 
-if os.path.exists(PKL_DIR):
+if os.path.exists(MERGED_DIR):
     print('skipping merge/clean, {} directory already exists'.format(\
-        PKL_DIR))
+        MERGED_DIR))
 else:
     print('merging and cleaning datasets')
-    os.mkdir(PKL_DIR)
+    os.mkdir(MERGED_DIR)
 
-    # dictionary to hold datasets
-    sar_datasets = {}
+    roads = pd.read_pickle(ROAD_LEVEL_DIR+'all_road_features.pkl')
+    roads = roads.set_index('OBJECTID')
 
-    for path in glob(CSV_DIR + '*masked*'):
+    # for each of the road level SAR data .pkls (exclude the IRI .pkl)
+    for path in glob(ROAD_LEVEL_DIR + '*masked*'):
+
+        # output naming
         key = path.split('/')[-1][:-4]
-        df = pd.read_csv(path, index_col='oid')
-        sar_datasets[key] = df
+        out_path = MERGED_DIR  + key + '.pkl'
+        print('merging {}'.format(key))
 
-    roads = pd.read_csv(CSV_DIR+'all_road_features.csv')
-
-    print("merging...")
-
-    merged_datasets = {}
-
-    for key in sar_datasets:
-        # join and merge
-        joined = roadstats.join_roads(sar_datasets[key], roads)
-        merged_datasets[key] = roadstats.clean(joined)
-
-        # save output as .pkl
-        out_path = PKL_DIR + key + '.pkl'
-        merged_datasets[key].to_pickle(path=out_path)
-
+        # read SAR data, merge with road data, clean/filter, and calculate new metrics
+        df = pd.read_pickle(path)
+        joined = roadstats.join_roads(roads, df)
+        roadstats.clean(joined).to_pickle(out_path)
 
 print('total runtime (s): ' + str(time.time() - start))

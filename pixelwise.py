@@ -40,59 +40,6 @@ def gen_img_stack(img_dir):
                 
     return all_images_df
 
-
-# raw_pixels = pd.read_pickle('raw_pixels.pkl')
-# img_stack = raw_pixels.iloc[:,22:]
-
-def log_img(img_stack):
-    """
-    log of each pixel in stack
-    for each image, mean of group of pixels by OID 
-    exp of all the means
-    """
-    
-    return np.log(img_stack)
-
-
-def mean_normalize(img_stack):
-    """
-    for each pixel, subtract the value at each date from the mean across all dates
-    
-    in: img_stack (output of gen_img_stack)
-    out: img_stack normalized by the temporal mean for each pixel
-    """
-    
-    # first, we replace zero value pixels with NaN, because we do not want the 
-    # zero values (not a legitimate value) to affect our means
-    img_stack.replace(0, np.nan)
-    
-    temporal_mean_img = np.mean(img_stack, axis=1)
-    mean_normalized_img = img_stack.subtract(temporal_mean_img, axis=0)
-    
-    return mean_normalized_img
-
-
-def exp_img(df):
-    """
-    used on a summarized dataframe if the input image stack was logged pixelwise
-    """
-    return np.exp(df)    
-        
-    
-"""
-to do the pixelwise log or any of these other new stats/metrics, the basic idea
-is that we do something to the entire image stack, and then run it through the
-same summarizing procedure we had before
-- but now we (can) work across all dates at once
-
-"""
-
-
-
-    
-        
-    
-
 def merge_img_rd_stack(img_stack, rd_dir):
     
     for path in glob(rd_dir + '*'):
@@ -125,10 +72,15 @@ def merge_img_rd_stack(img_stack, rd_dir):
         
     return img_stack
 
-
+def mean_normalize(img_stack):
+    """
+    for each pixel, subtract the value at each date from the mean across all dates
     
+    in: img_stack (output of gen_img_stack)
+    out: img_stack normalized by the temporal mean for each pixel
+    """
+        
+    temporal_mean_img = np.mean(img_stack, axis=1)
+    mean_normalized_img = img_stack.subtract(temporal_mean_img, axis=0)
     
-    
-
-
-
+    return mean_normalized_img    

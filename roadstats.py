@@ -18,7 +18,11 @@ import argparse
 import numpy as np
 import pandas as pd
 from datetime import timedelta
+import warnings
 
+# ignore warnings from the polyfit
+with warnings.catch_warnings():
+    warnings.simplefilter('ignore', np.RankWarning)
 
 # dictionaries for assigning quality labels
 QUALITY = {'Interstate' : {range(0, 60) : 'Excellent',
@@ -88,6 +92,9 @@ def clean(df):
     """
     Data cleaning
     """
+
+    # convert Date_Teste column to ints
+    df['Date_Teste'] = df['Date_Teste'].astype(int)
 
     # remove invalid IRI values (0 and -1)
     df = df.loc[df['NIRI_Avg'] > 0]
