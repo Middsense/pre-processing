@@ -379,6 +379,6 @@ else:
         # read SAR data, merge with road data, clean/filter, and calculate new metrics
         df = pd.read_pickle(path)
         joined = roadstats.join_roads(roads, df)
-        roadstats.clean(joined).to_pickle(out_path)
+        roadstats.clean(joined).to_pickle(out_path, protocol=4)
 
 print('total runtime (s): ' + str(time.time() - start))
