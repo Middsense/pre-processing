@@ -17,6 +17,9 @@ Mostly from the Pavement_Quality_V2 notebook
 import argparse
 import numpy as np
 import pandas as pd
+
+from scipy import stats
+
 from datetime import timedelta
 import warnings
 
@@ -72,6 +75,10 @@ def n_closest(row, sar_dates, max_diff):
         avg = np.average(closest_dates['closest_mean'], weights=closest_dates['weight'])
         std = np.average(closest_dates['closest_std'], weights=closest_dates['weight'])
 
+        # Theil-Sen slopes
+        ms, mi, ls, us = stats.mstats.theilslopes(closest_dates['closest_mean'], closest_dates['diff'].dt.days)
+        ts_slope = ms.astype(np.float32)
+
         # polyfit slope
         # ignore warnings from the polyfit
         with warnings.catch_warnings():
@@ -80,7 +87,7 @@ def n_closest(row, sar_dates, max_diff):
             m, b = np.polyfit(closest_dates['diff'].dt.days, closest_dates['closest_mean'], 1)
             slope = m.astype(np.float32)
 
-        return pd.Series([slope, avg, std])
+        return pd.Series([slope, avg, std, ts_slope])
 
 
 def join_roads(roads, data):
@@ -133,6 +140,6 @@ def clean(df):
 
     # add polyfit slope of closest_mean values within 45 days
     # add gaussian weighted average and stddev of closest_mean values within 45 days
-    df[['pf_slope', 'gauss_closest_mean', 'gauss_closest_std']] = df.apply(n_closest, args=(SAR_DATES, 45), axis=1)
+    df[['pf_slope', 'gauss_closest_mean', 'gauss_closest_std', 'ts_slope']] = df.apply(n_closest, args=(SAR_DATES, 45), axis=1)
 
     return df
