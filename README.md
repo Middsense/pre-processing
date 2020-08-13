@@ -4,7 +4,7 @@
 
 This is the main driver script that performs most of the spatial analysis. Input paths should lead to the raw data; outputs will be a series of .pkl files with additional statistics.
 
-Two flags may be set a the beginning of the script:
+Two flags may be set at the beginning of the script:
 * LOG_FILTER uses log-correction when computing statistics
 * MEAN_NORMALIZE subtracts a pixel-wise temporal mean reference image from each image in the stack before computing statistics.
 
