@@ -10,8 +10,6 @@ Inputs are speciific outputs from other middsense scripts
 Inputs:
     amplitude_csv: .csv with aggregated amplitude values for each road segment and image
     road_csv: .csv of all road features (from original road segment .gdb)
-
-Mostly from the Pavement_Quality_V2 notebook
 """
 
 import argparse
@@ -140,6 +138,6 @@ def clean(df):
 
     # add polyfit slope of closest_mean values within 45 days
     # add gaussian weighted average and stddev of closest_mean values within 45 days
-    df[['pf_slope', 'gauss_closest_mean', 'gauss_closest_std', 'ts_slope']] = df.apply(n_closest, args=(SAR_DATES, 45), axis=1)
+    df[['pf_slope', 'gauss_closest_mean', 'gauss_closest_std', 'ts_slope']] = df.apply(n_closest, args=(SAR_DATES, 50), axis=1)
 
     return df
