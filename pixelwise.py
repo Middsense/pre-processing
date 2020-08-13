@@ -19,6 +19,9 @@ from scipy import sparse
 from glob import glob
 
 def gen_img_stack(img_dir):
+    """
+    load all (67) despeck or raw SAR sparse matrices and align convert into a DataFrame
+    """
     
     ref_sparse = sparse.load_npz(img_dir + '/20110829.npz') #arbitrary sp matrix for row and col
     
@@ -41,6 +44,9 @@ def gen_img_stack(img_dir):
     return all_images_df
 
 def merge_img_rd_stack(img_stack, rd_dir):
+    """
+    load all (20) road sparse matrices and merge with an img_stack DataFrame
+    """
     
     for path in glob(rd_dir + '*'):
         
