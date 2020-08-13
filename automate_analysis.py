@@ -49,7 +49,7 @@ OPTIONS
 LOG_FILTER = False
 
 # computer statistics with mean normalization: pixel = pixel - temporal_mean(pixel)
-MEAN_NORMALIZE = True
+MEAN_NORMALIZE = False
 
 """
 WORKING DIRECTORY
@@ -158,7 +158,7 @@ else:
     # merge all features from all years
     all_road_features = pd.concat(out_gdfs)
     all_road_features.to_file(ROAD_SHP_DIR + 'all_roads_within_footprint.shp')
-    all_road_features.drop(columns='geometry').to_pickle(ROAD_PKL) # IRI .pkl
+    all_road_features.drop(columns='geometry').to_pickle(ROAD_PKL, protocol=4) # IRI .pkl
 
 # 01 rasterize .shp files, burn in OID value
 if os.path.exists(ROAD_RASTER_DIR):
@@ -305,7 +305,7 @@ else:
     for img_dir in [SPARSE_DIR + 'raw/', SPARSE_DIR + 'despeck/']:
         img_stack = pixelwise.gen_img_stack(img_dir)
         img_rd_stack = pixelwise.merge_img_rd_stack(img_stack, SPARSE_DIR + 'roads/')
-        img_rd_stack.to_pickle(PIXEL_LEVEL_DIR + img_dir.split('/')[-2] + '_pixels.pkl')
+        img_rd_stack.to_pickle(PIXEL_LEVEL_DIR + img_dir.split('/')[-2] + '_pixels.pkl', protocol=4)
         print(PIXEL_LEVEL_DIR + img_dir.split('/')[-2] + '_pixels.pkl')
 
 """
@@ -347,7 +347,7 @@ else:
             summarized = pixel2road.all_metrics(all_oids, LOG_FILTER, MEAN_NORMALIZE)
 
             out_path = pixel_path.split('/')[-1][:-11] + '_' + road_type + '.pkl'
-            pd.to_pickle(summarized, ROAD_LEVEL_DIR + out_path)
+            pd.to_pickle(summarized, ROAD_LEVEL_DIR + out_path, protocol=4)
 
             print('summarized ' + out_path)
 
@@ -379,6 +379,6 @@ else:
         # read SAR data, merge with road data, clean/filter, and calculate new metrics
         df = pd.read_pickle(path)
         joined = roadstats.join_roads(roads, df)
-        roadstats.clean(joined).to_pickle(out_path, protocol=4)
+        roadstats.clean(joined).to_pickle(out_path, protocol=4) # protocol 4 for colab compatibility
 
 print('total runtime (s): ' + str(time.time() - start))
