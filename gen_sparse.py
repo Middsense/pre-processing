@@ -16,7 +16,7 @@ except ImportError:
 
 
 def gen_all_roads_array(all_roads_raster_path):
-    '''
+    """
     Parameters
     ----------
     all_roads_raster_path : String
@@ -27,15 +27,15 @@ def gen_all_roads_array(all_roads_raster_path):
     all_roads_dense : np.array
         dense boolean (used as a mask) matrix of pixels where there is a road
         measurement in any year 2011-2015
-    '''
+    """
     all_roads = gdal.Open(all_roads_raster_path, gdal.GA_ReadOnly)
     all_roads_dense = BandReadAsArray(all_roads.GetRasterBand(1))
     return all_roads_dense
 
 def gen_sparse_image(image, all_roads_dense):
-    '''
+    """
     generate a single sparse SAR image
-    '''
+    """
     img = gdal.Open(image, gdal.GA_ReadOnly)
     img_dense = BandReadAsArray(img.GetRasterBand(1))
 
@@ -49,7 +49,6 @@ def gen_sparse_image(image, all_roads_dense):
 def gen_all_sparse_images(sar_image_list, all_roads_dense):
     """
     loop through all images, generate sparse versions, add them to a dictionary
-    TODO or dictionary with key = (date)_(raw/despeck)
     """
     sparse_images = []
     image_labels = []
@@ -57,7 +56,7 @@ def gen_all_sparse_images(sar_image_list, all_roads_dense):
     nimgs = len(sar_image_list)
     progress = 0
     for image in sar_image_list:
-        image_labels.append(image.split('/')[-1][0:8]) # TODO verify we're getting just the date
+        image_labels.append(image.split('/')[-1][0:8])
         sparse_images.append(gen_sparse_image(image, all_roads_dense))
 
         progress += 1
@@ -96,26 +95,3 @@ def gen_all_sparse_roads(road_raster_list):
 
     road_dict = dict(zip(road_labels, sparse_roads))
     return road_dict
-
-
-
-"""
-below, some quick testing, mostly to figure out what to do with each (img, rd) pair
-"""
-
-# img_dict = dict(zip(sar_image_list, sparse_images))
-# road_dict = dict(zip(road_raster_list, sparse_roads))
-
-# for now, just for a single road, image pair...
-# mask the sparse image matrix by the sparse rd matrix
-# output the data of both into a pixels DF
-# img0 = sparse_images[0]
-# rd0 = sparse_roads[0]
-
-# img0_masked = img0.multiply(rd0 > 0).tocoo()
-
-# pixels = pd.DataFrame({
-#     'oid': rd0.data,
-#     'amp': img0_masked.data})
-
-# summarize(pixels, mean)

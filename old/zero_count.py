@@ -1,6 +1,7 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
+NOTE: this script was for testing and is not currently called by other
+parts of the processing pipeline (8/13/20)
+
 Gretchen Doyle
 7/9/20
 
@@ -8,9 +9,6 @@ PURPOSE: Given a csv file with the road OBJECTID and corresponding amplitude val
 calculates the number of zeros within each unqiue OID, as well as the percentage of zeros.
 Next, summarizes the sum, mean and standard deviation for each OID before and after cleaning
 the data so that all zero amplitude values are removed.
-
-NOTE: you can use a test csv file called amp_test.csv which is uploaded
-
 """
 
 import pandas as pd
@@ -25,7 +23,7 @@ def summarize(df):
 
     Returns
     -------
-    grouped: dataframe created by grouping 'df' by 'OID' and calculating the average, 
+    grouped: dataframe created by grouping 'df' by 'OID' and calculating the average,
     mean, and standard deviation of the corresponding amplitude values
 
     """
@@ -45,7 +43,7 @@ amp_total = df.groupby('OID')['amp'].count()
 # Calculate the percentage of zero amp values for each OID
 for unique_value in 'OID':
     percent_zeros = zero_count/amp_total
-    
+
 #Summarize original dataset
 print("Summary before data cleaning:\n")
 print(summarize(df))
@@ -63,4 +61,3 @@ df = df.loc[df.amp!=0]
 
 #Summarize dataset with no zero amp values
 summarize(df)
-

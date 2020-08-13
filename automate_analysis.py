@@ -19,26 +19,25 @@ import os
 import time
 import pandas as pd
 import numpy as np
-from glob import glob
 from scipy import sparse
+from glob import glob
+
+import geopandas as gpd
+try:
+    from osgeo import gdal
+    from osgeo.gdalnumeric import *
+    from osgeo.gdalconst import *
+except ImportError:
+    sys.exit('ERROR: cannot find GDAL/OGR modules')
 
 # other Middsense files
 import vector2raster as v2r
 import change_raster_resolution as crr
 import gen_sparse
+import pixelwise
 import pixel2road
 import roadstats
-import pixelwise
 
-# TODO using these libraries should probably happen just in other files
-# called by automate_analysis
-import geopandas as gpd
-try:
-    from osgeo import gdal
-    from osgeo.gdalnumeric import * # pylint: disable=unused-wildcard-import
-    from osgeo.gdalconst import * # pylint: disable=unused-wildcard-import
-except ImportError:
-    sys.exit('ERROR: cannot find GDAL/OGR modules')
 
 start = time.time()
 
@@ -89,7 +88,6 @@ OUTPUTS
 ROAD_SHP_DIR = './road_shapefiles/'
 ROAD_RASTER_DIR = './road_rasters/'
 LANDCOVER_RASTER_DIR = './landcover_rasters/'
-# CSV_DIR = './csv/'
 SPARSE_DIR = './sparse/'
 PIXEL_LEVEL_DIR = './pixel_level/'
 ROAD_LEVEL_DIR = './road_level/'
@@ -99,7 +97,6 @@ MERGED_DIR = './road_level_merged/'
 LANDCOVER_MERGED = LANDCOVER_RASTER_DIR + 'landcover_merged.tif'
 LANDCOVER_REPROJECTED = LANDCOVER_RASTER_DIR + 'landcover_merged_reprojected.tif'
 LANDCOVER_MASKED = LANDCOVER_RASTER_DIR + 'landcover_merged_reprojected_masked.tif'
-# ROAD_CSV = CSV_DIR + 'all_road_features.csv'
 ROAD_PKL = ROAD_LEVEL_DIR + 'all_road_features.pkl'
 ALL_ROADS_SHP = ROAD_SHP_DIR + 'all_roads_within_footprint.shp'
 
@@ -160,6 +157,8 @@ else:
     all_road_features.to_file(ROAD_SHP_DIR + 'all_roads_within_footprint.shp')
     all_road_features.drop(columns='geometry').to_pickle(ROAD_PKL, protocol=4) # IRI .pkl
 
+    out_gdfs, in_layer, join, all_road_features = None, None, None, None
+
 # 01 rasterize .shp files, burn in OID value
 if os.path.exists(ROAD_RASTER_DIR):
     print('skipping .shp to .tif conversion, {} directory already exists'.format(\
@@ -202,17 +201,11 @@ else:
         + ' '.join(merge_tiles) + ' ' + LANDCOVER_MERGED
     os.system(WARP_COMMAND)
 
-# test of gdalwarp as a Python library function (rather than calling from cli with os)
-# unfortunately, runs slower (at least as configured) than os.system implementation
-# options = gdal.WarpOptions(cutlineDSName=FOOTPRINT, resampleAlg="near",\
-#     creationOptions=["COMPRESS=DEFLATE"])
-# gdal.Warp(LANDCOVER_RASTER_DIR + 'landcover-merged.tif', merge_tiles, options=options)
-
 # 12 reproject and change resolution
 if os.path.exists(LANDCOVER_REPROJECTED):
     print('skipping reprojection, {} already exists'.format(LANDCOVER_REPROJECTED))
 else:
-    print("reprojecting landcover raster and resmapling to match SAR resolution")
+    print("reprojecting landcover raster and resampling to match SAR resolution")
     crr.convert_resolution(LANDCOVER_MERGED, LANDCOVER_REPROJECTED, RAW_SAR_DIR + REFTIF)
 
 # 13 reclassify to create road mask
@@ -239,11 +232,7 @@ for road_raster in glob(ROAD_RASTER_DIR + '*within_footprint.tif'):
 
 """
 Sparse matrix processing of images and road features
-
-at this point in pipeline, all intermediate files have been created, now we
-proceed by summarizing the SAR data by road segment into tables/csvs
 """
-
 # 30 generate sparse matrix versions of the road rasters and SAR images
 # clipped to the road pixels, and save these sparse matrices as files (.npz)
 
@@ -275,12 +264,14 @@ def gen_all_sparse():
         raw_imgs = glob(RAW_SAR_DIR+'*.tif')
         sparse_raw = gen_sparse.gen_all_sparse_images(raw_imgs, all_roads_dense) # dict of 67 sparse matrices
         save_sparse(sparse_raw, SPARSE_DIR+'raw/')
+        sparse_raw = None
 
         # Despeckled images
         print('generating despeckled SAR sparse matrices (hang in there)')
         despeck_imgs = glob(DESPECK_SAR_DIR+'*.tif')
         sparse_despeck = gen_sparse.gen_all_sparse_images(despeck_imgs, all_roads_dense) # dict of 67 sparse matrices
         save_sparse(sparse_despeck, SPARSE_DIR+'despeck/')
+        sparse_despeck = None
 
         # sparse matrices for single year road rasters
         # this should generate 5 years * 2 (buffered/centerlines) * 2 (landcovermasked/notmasked) = 20 sparse matrices
@@ -288,6 +279,7 @@ def gen_all_sparse():
         road_rasters = glob(ROAD_RASTER_DIR+'Staunton_Maint_[0-9]*.tif')
         sparse_roads = gen_sparse.gen_all_sparse_roads(road_rasters) #dict of sparse matrices for each road raster
         save_sparse(sparse_roads, SPARSE_DIR+'roads/')
+        sparse_roads = None
 
 # Generate and save all sparse matrices: raw, despeck, and roads
 gen_all_sparse()
@@ -306,7 +298,8 @@ else:
         img_stack = pixelwise.gen_img_stack(img_dir)
         img_rd_stack = pixelwise.merge_img_rd_stack(img_stack, SPARSE_DIR + 'roads/')
         img_rd_stack.to_pickle(PIXEL_LEVEL_DIR + img_dir.split('/')[-2] + '_pixels.pkl', protocol=4)
-        print(PIXEL_LEVEL_DIR + img_dir.split('/')[-2] + '_pixels.pkl')
+
+    img_stack, img_rd_stack = None, None
 
 """
 Calculate metrics on each group of pixels within a road segment
@@ -350,6 +343,8 @@ else:
             pd.to_pickle(summarized, ROAD_LEVEL_DIR + out_path, protocol=4)
 
             print('summarized ' + out_path)
+
+    df, oid_cols, sar_cols, concat_list, all_oids, summarized = None, None, None, None, None, None
 
 """
 Road level data merging, cleaning and calculating additional metrics/features

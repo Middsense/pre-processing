@@ -20,10 +20,6 @@ import pandas as pd
 from datetime import timedelta
 import warnings
 
-# ignore warnings from the polyfit
-with warnings.catch_warnings():
-    warnings.simplefilter('ignore', np.RankWarning)
-
 # dictionaries for assigning quality labels
 QUALITY = {'Interstate' : {range(0, 60) : 'Excellent',
                            range(60, 100) : 'Good',
@@ -51,9 +47,11 @@ def n_closest(row, sar_dates, max_diff):
 
     iri_date = row['Date_Teste']
 
+    # convert dates to datetime format
     iri_datetime = pd.to_datetime(iri_date, format='%Y%m%d')
     sar_datetimes = pd.to_datetime(sar_dates, format='%Y%m%d')
 
+    # finds SAR dates closest to IRI test date
     max_diff = timedelta(days=max_diff)
     closest_dates = pd.DataFrame({'diff': iri_datetime - sar_datetimes, 'sar_dates':sar_dates, 'sar_datetime':sar_datetimes})
     closest_dates = closest_dates[abs(closest_dates['diff']) < max_diff]
@@ -63,6 +61,7 @@ def n_closest(row, sar_dates, max_diff):
         return pd.Series([np.NaN, np.NaN, np.NaN])
 
     else:
+        # closest mean and closest standard deviation
         closest_dates['closest_mean'] = closest_dates.apply(lambda row2: row[str(row2['sar_dates'])+'_mean'], axis=1)
         closest_dates['closest_std'] = closest_dates.apply(lambda row2: row[str(row2['sar_dates'])+'_std'], axis=1)
 
@@ -74,8 +73,12 @@ def n_closest(row, sar_dates, max_diff):
         std = np.average(closest_dates['closest_std'], weights=closest_dates['weight'])
 
         # polyfit slope
-        m, b = np.polyfit(closest_dates['diff'].dt.days, closest_dates['closest_mean'], 1)
-        slope = m.astype(np.float32)
+        # ignore warnings from the polyfit
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', np.RankWarning)
+
+            m, b = np.polyfit(closest_dates['diff'].dt.days, closest_dates['closest_mean'], 1)
+            slope = m.astype(np.float32)
 
         return pd.Series([slope, avg, std])
 
@@ -90,9 +93,16 @@ def join_roads(roads, data):
 
 def clean(df):
     """
-    Data cleaning
+    Data cleaning and road-level statistics:
+    * removes invalid IRI values
+    * removes road segments with pavement quality dates outside our range of interest
+    * finds the SAR acquisition date closest to the IRI test date and and adds columns
+      of statistics for that date
+    * removes rows containing zero amplitude values
+    * adds road quality labels based on IRI categories (for categorical classification labels)
+    * computes the polyfit slope and Gaussian weighted average of average SAR values acquired within
+      a number of days (default = 45) of IRI testing
     """
-
     # convert Date_Teste column to ints
     df['Date_Teste'] = df['Date_Teste'].astype(int)
 
@@ -126,37 +136,3 @@ def clean(df):
     df[['pf_slope', 'gauss_closest_mean', 'gauss_closest_std']] = df.apply(n_closest, args=(SAR_DATES, 45), axis=1)
 
     return df
-
-
-if __name__ == "__main__":
-
-    DESCRIPTION = "Merge road data to amplitude data and do some cleaning. Default saves to .pkl"
-
-    parser = argparse.ArgumentParser(description=DESCRIPTION)
-
-    parser.add_argument('road_csv',
-                        help="Path to road .csv (required)")
-    parser.add_argument('amplitude_csv',
-                        help="Path to amplitude .csv (required)")
-    parser.add_argument('out_path',
-                        help="path to output .pkl or csv (required)")
-    parser.add_argument('--csv', action='store_true',
-                        help='Save as csv instead of .pkl')
-
-    args = parser.parse_args()
-
-    # Read input and index
-    roads = pd.read_csv(args.road_csv, index_col='OBJECTID')
-    data = pd.read_csv(args.amplitude_csv, index_col='oid')
-
-    # join
-    joined = join_roads(roads, data)
-
-    # filtering and cleaning
-    cleaned = clean(joined)
-
-    # Output
-    if args.csv:
-        cleaned.to_csv(path_or_buf=args.out_path)
-    else:
-        cleaned.to_pickle(path=args.out_path)
